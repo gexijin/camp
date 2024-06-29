@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jumping Shooting Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1e1640;
+        }
+        canvas {
+            border: 1px solid #fff;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        // Initialize canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        const SCREEN_WIDTH = canvas.width;
+        const SCREEN_HEIGHT = canvas.height;
+        const WHITE = '#ffffff';
+        const RED = '#ff0000';
+
+        // Player settings
+        const playerWidth = 50;
+        const playerHeight = 50;
+        let playerX = SCREEN_WIDTH / 2 - playerWidth / 2;
+        let playerY = SCREEN_HEIGHT - playerHeight - 20; // Initial position at the bottom
+        const playerSpeed = 7; // Player horizontal movement speed
+        const jumpStrength = 20; // Player jump strength (higher means higher jump)
+        const gravity = 0.8; // Gravity for jumping
+        let jumpVelocity = 0; // Vertical velocity for jumping
+        let isJumping = false;
+
+        // Player health
+        let playerHealth = 20; // Initial health
+        const healthBarWidth = 200;
+        const healthBarHeight = 20;
+
+        // Player bullets
+        const playerBulletWidth = 15;
+        const playerBulletHeight = 5;
+        const playerBulletSpeed = 10; // Bullet speed for the player
+        let playerBullets = [];
+
+        // Enemy settings
+        const enemyWidth = 50;
+        const enemyHeight = 50;
+        const enemySpeed = 3; // Speed of enemies
+        const enemySpawnDelay = 2000; // Delay between enemy spawns (in milliseconds)
+        const enemyAttackCooldown = 1000; // Cooldown between enemy attacks (in milliseconds)
+        let lastEnemySpawnTime = 0;
+        let enemies = [];
+
+        // Game variables
+        let lastDirection = 'right'; // Track the last movement direction ('left' or 'right')
+
+        // Handle keydown and keyup events
+        let moveLeft = false;
+        let moveRight = false;
+
+        window.addEventListener('keydown', function(event) {
+            if (event.key === 'a' || event.key === 'A') {
+                moveLeft = true;
+                moveRight = false; // Ensure only one direction is active
+                lastDirection = 'left'; // Update last direction to left
+            } else if (event.key === 'd' || event.key === 'D') {
+                moveRight = true;
+                moveLeft = false; // Ensure only one direction is active
+                lastDirection = 'right'; // Update last direction to right
+            } else if (event.key === ' ' || event.key === 'Spacebar') {
+                jump();
+            }
+        });
+
+        window.addEventListener('keyup', function(event) {
+            if (event.key === 'a' || event.key === 'A') {
+                moveLeft = false;
+            } else if (event.key === 'd' || event.key === 'D') {
+                moveRight = false;
+            }
+        });
+
+        // Handle mouse click for shooting
+        canvas.addEventListener('mousedown', function(event) {
+            shoot();
+        });
+
+        // Handle player jumping
+        function jump() {
+            if (!isJumping && playerY === SCREEN_HEIGHT - playerHeight - 20) { // Only jump if on ground
+                isJumping = true;
+                jumpVelocity = jumpStrength;
+            }
+        }
+
+        // Handle shooting
+        function shoot() {
+            let bulletVelocityX = 0;
+            if (lastDirection === 'left') {
+                bulletVelocityX = -playerBulletSpeed; // Shoot left
+            } else if (lastDirection === 'right') {
+                bulletVelocityX = playerBulletSpeed; // Shoot right
+            }
+            // Ensure bullets are shot horizontally only
+            if (bulletVelocityX !== 0) {
+                playerBullets.push({
+                    x: playerX + playerWidth / 2 - playerBulletWidth / 2,
+                    y: playerY + playerHeight / 2 - playerBulletHeight / 2,
+                    velocityX: bulletVelocityX,
+                    velocityY: 0
+                });
+            }
+        }
+
+        // Spawn enemy outside the screen borders
+        function spawnEnemy() {
+            const side = Math.random() < 0.5 ? 'left' : 'right';
+            let enemyX, enemyVelocityX;
+            if (side === 'left') {
+                enemyX = -enemyWidth;
+                enemyVelocityX = enemySpeed;
+            } else {
+                enemyX = SCREEN_WIDTH;
+                enemyVelocityX = -enemySpeed;
+            }
+            const enemyY = SCREEN_HEIGHT - enemyHeight - 20; // Enemies stay on the ground
+            enemies.push({
+                x: enemyX,
+                y: enemyY,
+                velocityX: enemyVelocityX,
+                velocityY: 0, // Enemies move horizontally
+                lastAttackTime: 0 // Initialize last attack time for cooldown
+            });
+        }
+
+        // Collision detection
+        function checkCollisions() {
+            // Player bullet-enemy collision
+            for (let i = 0; i < playerBullets.length; i++) {
+                for (let j = 0; j < enemies.length; j++) {
+                    let bullet = playerBullets[i];
+                    let enemy = enemies[j];
+                    if (bullet.x < enemy.x + enemyWidth &&
+                        bullet.x + playerBulletWidth > enemy.x &&
+                        bullet.y < enemy.y + enemyHeight &&
+                        bullet.y + playerBulletHeight > enemy.y) {
+                        playerBullets.splice(i, 1); // Remove bullet
+                        enemies.splice(j, 1); // Remove enemy
+                        break;
+                    }
+                }
+            }
+
+            // Enemy-player collision
+            for (let enemy of enemies) {
+                if (playerX < enemy.x + enemyWidth &&
+                    playerX + playerWidth > enemy.x &&
+                    playerY < enemy.y + enemyHeight &&
+                    playerY + playerHeight > enemy.y) {
+                    if (Date.now() - enemy.lastAttackTime > enemyAttackCooldown) {
+                        playerHealth--;
+                        enemy.lastAttackTime = Date.now(); // Set last attack time for this enemy
+                        if (playerHealth <= 0) {
+                            gameOver();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Game over function
+        function gameOver() {
+            // Display game over message or perform other actions
+            alert('Game Over! You lost all your health.');
+            // Reload the game or perform other actions as needed
+            location.reload();
+        }
+
+        // Game loop
+        function gameLoop(timestamp) {
+            // Clear canvas
+            ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+            // Move player
+            if (moveLeft) {
+                playerX -= playerSpeed;
+            }
+            if (moveRight) {
+                playerX += playerSpeed;
+            }
+            // Ensure player stays within bounds
+            if (playerX < 0) {
+                playerX = 0;
+            }
+            if (playerX + playerWidth > SCREEN_WIDTH) {
+                playerX = SCREEN_WIDTH - playerWidth;
+            }
+
+            // Apply gravity and handle jumping
+            if (isJumping) {
+                playerY -= jumpVelocity;
+                jumpVelocity -= gravity;
+
+                // Check if landed
+                if (playerY >= SCREEN_HEIGHT - playerHeight - 20) {
+                    playerY = SCREEN_HEIGHT - playerHeight - 20;
+                    isJumping = false;
+                    jumpVelocity = jumpStrength; // Reset jump velocity for next jump
+                }
+            }
+
+            // Spawn enemies outside the screen borders
+            if (timestamp - lastEnemySpawnTime > enemySpawnDelay) {
+                spawnEnemy();
+                lastEnemySpawnTime = timestamp;
+            }
+
+            // Move player bullets
+            for (let bullet of playerBullets) {
+                bullet.x += bullet.velocityX;
+                bullet.y += bullet.velocityY;
+            }
+
+            // Move enemies
+            for (let enemy of enemies) {
+                enemy.x += enemy.velocityX;
+                enemy.y += enemy.velocityY;
+                // Remove enemies that move out of bounds
+                if (enemy.x < -enemyWidth || enemy.x > SCREEN_WIDTH) {
+                    let index = enemies.indexOf(enemy);
+                    enemies.splice(index, 1);
+                }
+            }
+
+            // Draw player
+            ctx.fillStyle = WHITE;
+            ctx.fillRect(playerX, playerY, playerWidth, playerHeight);
+
+            // Draw player health bar
+            ctx.fillStyle = WHITE;
+            ctx.fillRect(SCREEN_WIDTH - healthBarWidth - 20, 10, healthBarWidth, healthBarHeight);
+            ctx.fillStyle = RED;
+            ctx.fillRect(SCREEN_WIDTH - healthBarWidth - 20, 10, healthBarWidth * (playerHealth / 20), healthBarHeight);
+
+            // Draw player bullets
+            ctx.fillStyle = WHITE;
+            for (let bullet of playerBullets) {
+                ctx.fillRect(bullet.x, bullet.y, playerBulletWidth, playerBulletHeight);
+            }
+
+            // Draw enemies
+            ctx.fillStyle = RED;
+            for (let enemy of enemies) {
+                ctx.fillRect(enemy.x, enemy.y, enemyWidth, enemyHeight);
+            }
+
+            // Check collisions
+            checkCollisions();
+
+            // Request next frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game loop
+        gameLoop();
+    </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wave Battle Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game">
+    <div id="background"></div>
+
+    <div id="player">
+      <div class="character"></div>
+      <div class="hp" id="playerHP">HP: 100</div>
+    </div>
+
+    <div id="enemy">
+      <div class="character"></div>
+      <div id="enemyStats">
+        <div class="counter" id="counter">Enemies defeated: 0</div>
+        <div class="name" id="enemyName">Enemy</div>
+        <div class="hp" id="enemyHP">HP: 100</div>
+      </div>
+    </div>
+
+    <div id="battleLog"></div>
+
+    <div class="controls">
+      <button onclick="playerAttack()">Attack</button>
+      <button onclick="playerHeal()">Heal</button>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay">
+      <div>
+        <h1 style="color: red;">Hooray! You died.</h1>
+        <p>Refresh to restart.</p>
+      </div>
+    </div>
+
+    <div id="upgradeOverlay" class="overlay">
+      <div>
+        <h1>Choose an upgrade:</h1>
+        <button onclick="upgrade('heal')">Heal Upgrade</button>
+        <button onclick="upgrade('health')">Health Upgrade</button>
+        <button onclick="upgrade('damage')">Damage Upgrade</button>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </div>
+</body>
+</html>

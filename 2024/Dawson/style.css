@@ -1,0 +1,167 @@
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+#container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  position: relative;
+}
+
+#player, #enemy {
+  position: relative;
+  display: inline-block;
+}
+
+.character {
+  width: 70px;
+  height: 70px;
+  background-size: cover;
+}
+
+.health {
+  position: absolute;
+  bottom: -20px;
+  width: 100%;
+  text-align: center;
+  color: white;
+}
+
+.controls {
+  margin-top: 20px;
+}
+
+#background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: green;
+  z-index: -1;
+}
+
+.spot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: gray;
+}
+
+#battleLog {
+  margin-top: 20px;
+  max-width: 500px;
+  height: 200px;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+#gameOverOverlay, #upgradeOverlay {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(255, 0, 0, 0.8); /* Semi-transparent red background */
+  z-index: 10;
+}
+
+.gameOverText {
+  color: black;
+  text-align: center;
+}
+
+.upgradeBox {
+  background-color: white;
+  color: black;
+  padding: 20px;
+  margin: 10px;
+  cursor: pointer;
+}
+
+#counter {
+  margin-top: 20px;
+  color: white;
+}#enemy {
+  position: absolute;
+  top: 20px; /* Adjust as needed */
+  right: 20px; /* Adjust as needed */
+}
+
+#enemyStats {
+  text-align: center;
+  margin-top: 10px; /* Adjust as needed */
+}
+
+#enemyName {
+  font-size: 18px; /* Adjust as needed */
+}
+
+#enemyHP {
+  font-size: 16px; /* Adjust as needed */
+}
+/* Center the game container */
+#game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+/* Center the player and enemy */
+#player, #enemy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Center the controls horizontally */
+.controls {
+  display: flex;
+  justify-content: center;
+}
+
+/* Center overlay content */
+.overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay > div {
+  background-color: white;
+  padding: 20px;
+  text-align: center;
+}
+
+/* Adjust overlay content size and alignment */
+#gameOverOverlay > div, #upgradeOverlay > div {
+  max-width: 80%;
+}
+
+/* Adjust other styles as needed */
+#player, #enemy {
+  margin-bottom: 20px;
+}
+
+/* Style adjustments for buttons */
+.controls button {
+  margin: 0 10px;
+}

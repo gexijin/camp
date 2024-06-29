@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Side-Scrolling Platformer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: black; /* Outside of play area */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden; /* Hide overflow to prevent scrollbars */
+        }
+
+        #gameContainer {
+            position: relative;
+            background: linear-gradient(to top, #b5a2cf, #694489); /* Gradient inside play area */
+            border: 1px solid black;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const context = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const player = {
+            x: canvas.width / 4,
+            y: canvas.height - 30,
+            width: 20,
+            height: 20,
+            color: '#1EB824', // Darker green
+            dy: 0,
+            dx: 5 * 0.75, // Reduce speed by 25%
+            isJumping: false,
+            rotation: 0, // Rotation angle for animation
+            rotationSpeed: Math.PI / 30, // Rotation speed (in radians)
+            rotationDirection: 1, // Direction of rotation (1)
+            maxRotation: Math.PI / 2, // Maximum rotation angle for half spin
+            isRotating: false // Flag to control rotation animation
+        };
+
+        const gravity = 1;
+        const jumpForce = -13;
+        const ground = canvas.height;
+        let scrollOffset = 0;
+        let teleportCounter = 0;
+
+        const platforms = [
+            { x: 1860, y: canvas.height - 20, width: 20, height: 20 },
+            { x: 1950, y: canvas.height - 40, width: 20, height: 40 },
+            { x: 2040, y: canvas.height - 60, width: 20, height: 60 },
+            { x: 2600, y: canvas.height - 40, width: 200, height: 40 },
+            { x: 2890, y: canvas.height - 20, width: 60, height: 20 },
+            { x: 3030, y: canvas.height - 40, width: 40, height: 40 },
+            { x: 3150, y: canvas.height - 60, width: 40, height: 60 },
+            { x: 3270, y: canvas.height - 80, width: 40, height: 80 },
+            { x: 3390, y: canvas.height - 100, width: 40, height: 100 },
+            { x: 3510, y: canvas.height - 120, width: 40, height: 120 },
+            { x: 3630, y: canvas.height - 140, width: 40, height: 140 },
+            { x: 3750, y: canvas.height - 160, width: 40, height: 160 },
+            { x: 3870, y: canvas.height - 180, width: 40, height: 180 },
+            { x: 3990, y: canvas.height - 200, width: 40, height: 200 },
+            { x: 4110, y: canvas.height - 220, width: 40, height: 220 },
+            { x: 4230, y: canvas.height - 240, width: 40, height: 240 },
+            { x: 4350, y: canvas.height - 260, width: 40, height: 260 },
+            { x: 4470, y: canvas.height - 280, width: 40, height: 280 },
+            { x: 4590, y: canvas.height - 300, width: 40, height: 300 },
+            { x: 4700, y: canvas.height - 100, width: 40, height: 100 },
+            { x: 4830, y: canvas.height - 60, width: 40, height: 60 },
+            { x: 4970, y: canvas.height - 80, width: 40, height: 80 },
+            { x: 5400, y: canvas.height - 40, width: 30, height: 40 },
+            { x: 5500, y: canvas.height - 60, width: 30, height: 60 },
+            { x: 5600, y: canvas.height - 80, width: 30, height: 80 },
+  { x: 7860, y: canvas.height - 20, width: 20, height: 20 },
+            { x: 7950, y: canvas.height - 40, width: 20, height: 40 },
+            { x: 8040, y: canvas.height - 60, width: 20, height: 60 },
+            { x: 8600, y: canvas.height - 40, width: 200, height: 40 },
+            { x: 8890, y: canvas.height - 20, width: 60, height: 20 },
+            { x: 9030, y: canvas.height - 40, width: 40, height: 40 },
+            { x: 9150, y: canvas.height - 60, width: 40, height: 60 },
+            { x: 9270, y: canvas.height - 80, width: 40, height: 80 },
+            { x: 9390, y: canvas.height - 100, width: 40, height: 100 },
+            { x: 9510, y: canvas.height - 120, width: 40, height: 120 },
+            { x: 9630, y: canvas.height - 140, width: 40, height: 140 },
+            { x: 9750, y: canvas.height - 160, width: 40, height: 160 },
+            { x: 9870, y: canvas.height - 180, width: 40, height: 180 },
+            { x: 9990, y: canvas.height - 200, width: 40, height: 200 },
+            { x: 10110, y: canvas.height - 220, width: 40, height: 220 },
+            { x: 10230, y: canvas.height - 240, width: 40, height: 240 },
+            { x: 10350, y: canvas.height - 260, width: 40, height: 260 },
+            { x: 10470, y: canvas.height - 280, width: 40, height: 280 },
+            { x: 10590, y: canvas.height - 300, width: 40, height: 300 },
+            { x: 10700, y: canvas.height - 100, width: 40, height: 100 },
+            { x: 10830, y: canvas.height - 60, width: 40, height: 60 },
+            { x: 10970, y: canvas.height - 80, width: 40, height: 80 },
+            { x: 11400, y: canvas.height - 40, width: 30, height: 40 },
+            { x: 11500, y: canvas.height - 60, width: 30, height: 60 },
+            { x: 11600, y: canvas.height - 80, width: 30, height: 80 },
+        ];
+
+        const spikes = [
+            { x: 600, y: canvas.height - 0, size: 20 },
+            { x: 1200, y: canvas.height - 0, size: 20 },
+            { x: 1220, y: canvas.height - 0, size: 20 },
+            { x: 1820, y: canvas.height - 0, size: 20 },
+            { x: 1840, y: canvas.height - 0, size: 20 },
+            { x: 4740, y: canvas.height - 0, size: 60 },
+            { x: 4800, y: canvas.height - 0, size: 30 },
+            { x: 5010, y: canvas.height - 0, size: 20 },
+            { x: 5030, y: canvas.height - 0, size: 20 },
+            { x: 5050, y: canvas.height - 0, size: 20 },
+            { x: 5070, y: canvas.height - 0, size: 20 },
+            { x: 5090, y: canvas.height - 0, size: 20 },
+            { x: 5250, y: canvas.height - 0, size: 20 },
+            { x: 5270, y: canvas.height - 0, size: 20 },
+{ x: 6600, y: canvas.height - 0, size: 20 },
+            { x: 7200, y: canvas.height - 0, size: 20 },
+            { x: 7220, y: canvas.height - 0, size: 20 },
+            { x: 7820, y: canvas.height - 0, size: 20 },
+            { x: 7840, y: canvas.height - 0, size: 20 },
+            { x: 10740, y: canvas.height - 0, size: 60 },
+            { x: 10800, y: canvas.height - 0, size: 30 },
+            { x: 11010, y: canvas.height - 0, size: 20 },
+            { x: 11030, y: canvas.height - 0, size: 20 },
+            { x: 11050, y: canvas.height - 0, size: 20 },
+            { x: 11070, y: canvas.height - 0, size: 20 },
+            { x: 11090, y: canvas.height - 0, size: 20 },
+            { x: 11250, y: canvas.height - 0, size: 20 },
+            { x: 11270, y: canvas.height - 0, size: 20 },
+        ];
+
+        let clouds = [];
+
+ function generateClouds() {
+    const newClouds = [];
+    for (let i = 0; i < 10; i++) {
+        const cloud = {
+            x: canvas.width + Math.random() * canvas.width + scrollOffset, // Adjust x position to account for scrolling
+            y: Math.random() * canvas.height / 2,
+            width: 100 + Math.random() * 100,
+            height: 50 + Math.random() * 50,
+            speed: 0.5 + Math.random() * 0.5 // Random speed for each cloud
+        };
+        newClouds.push(cloud);
+    }
+    clouds = clouds.concat(newClouds);
+}
+
+        function drawClouds() {
+            context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            clouds.forEach(cloud => {
+                context.fillRect(cloud.x - scrollOffset * cloud.speed, cloud.y, cloud.width, cloud.height);
+            });
+        }
+
+        function drawPlayer() {
+            context.save(); // Save the current transformation state
+
+            // Translate and rotate the context based on player's position and rotation
+            context.translate(player.x + player.width / 2, player.y + player.height / 2);
+            context.rotate(player.rotation);
+
+            // Draw the player rectangle
+            context.fillStyle = player.color;
+            context.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+
+            // Draw a slightly bigger and darker orange square inside the player
+            const squareSize = 8;
+            context.fillStyle = 'rgba(255, 130, 0, 1)'; // Adjust RGB and alpha to make it darker
+            context.fillRect(-squareSize / 2, -squareSize / 2, squareSize, squareSize);
+
+            context.restore(); // Restore the saved transformation state
+        }
+
+        function drawPlatforms() {
+            context.fillStyle = 'black'; // Platforms are now black with white outline
+            platforms.forEach(platform => {
+                context.fillRect(platform.x - scrollOffset, platform.y, platform.width, platform.height);
+                context.strokeStyle = 'white';
+                context.lineWidth = 2;
+                context.strokeRect(platform.x - scrollOffset, platform.y, platform.width, platform.height);
+            });
+        }
+
+        function drawSpikes() {
+            context.fillStyle = 'red';
+            spikes.forEach(spike => {
+                context.beginPath();
+                context.moveTo(spike.x - scrollOffset, spike.y);
+                context.lineTo(spike.x + spike.size / 2 - scrollOffset, spike.y - spike.size);
+                context.lineTo(spike.x + spike.size - scrollOffset, spike.y);
+                context.closePath();
+                context.fill();
+            });
+        }
+
+	// Define a reset wall
+const resetWall = {
+    x: 800, // Adjust x position as needed
+    y: canvas.height - 2000, // Adjust y position within visible range
+    width: 20,
+    height: 5,
+    color: 'blue' // Adjust color as needed
+};
+	let completedCounter = 0;
+
+	function drawResetWall() {
+   	 context.fillStyle = resetWall.color;
+   	 context.fillRect(resetWall.x - scrollOffset, resetWall.y, resetWall.width, resetWall.height);
+	}
+
+	function checkResetCollision(player, wall) {
+   		return player.x < wall.x + wall.width &&
+           player.x + player.width > wall.x &&
+           player.y < wall.y + wall.height &&
+           player.y + player.height > wall.y;
+	}
+
+
+        function drawCounter() {
+            context.fillStyle = 'white'; // Counters are now white
+            context.font = '20px Arial';
+            context.fillText(`Attempts: ${teleportCounter}`, 10, 30);
+            context.fillText(`Score: ${Math.floor(scrollOffset / 10)}`, canvas.width - 150, 30); // Score counter added
+   	    context.fillText(`Completed: ${completedCounter}`, canvas.width - 150, 60);
+
+        }
+
+        function checkCollision(a, b) {
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
+        function resetPlayer() {
+            player.x = canvas.width / 4;
+            player.y = canvas.height - 30;
+            player.dy = 0;
+            scrollOffset = 0;
+            teleportCounter++;
+        }
+
+        function updatePlayer() {
+            player.dy += gravity;
+            player.y += player.dy;
+
+            if (player.y + player.height > ground) {
+                player.y = ground - player.height;
+                player.dy = 0;
+                player.isJumping = false;
+            }
+
+            platforms.forEach(platform => {
+                if (checkCollision(player, {
+                    x: platform.x - scrollOffset,
+                    y: platform.y,
+                    width: platform.width,
+                    height: platform.height
+                })) {
+                    if (player.dy > 0 && player.y < platform.y) {
+                        player.y = platform.y - player.height;
+                        player.dy = 0;
+                        player.isJumping = false;
+                    }
+                }
+
+                if (checkCollision(player, {
+                    x: platform.x - scrollOffset,
+                    y: platform.y + platform.height - player.height,
+                    width: platform.width,
+                    height: platform.height
+                })) {
+                    if (player.dy < 0 && player.y + player.height > platform.y + platform.height) {
+                        resetPlayer();
+                    }
+                }
+
+                if (checkCollision(player, {
+                    x: platform.x - scrollOffset,
+                    y: platform.y,
+                    width: player.dx,
+                    height: platform.height
+                })) {
+                    if (player.dx > 0 && player.x < platform.x - scrollOffset + platform.width) {
+                        resetPlayer();
+                    }
+                }
+
+                if (checkCollision(player, {
+                    x: platform.x - scrollOffset + platform.width - player.width,
+                    y: platform.y,
+                    width: player.dx,
+                    height: platform.height
+                })) {
+                    if (player.dx < 0 && player.x + player.width > platform.x - scrollOffset) {
+                        resetPlayer();
+                    }
+                }
+		if (checkCollision(player, resetWall)) {
+       		 resetPlayer();
+        	 completedCounter++; // Increment completed counter
+    		}
+
+            });
+
+            spikes.forEach(spike => {
+                if (checkCollision(player, {
+                    x: spike.x - scrollOffset,
+                    y: spike.y - spike.size,
+                    width: spike.size,
+                    height: spike.size
+                })) {
+                    resetPlayer();
+                }
+            });
+
+            scrollOffset += player.dx;
+
+            // Update player rotation animation
+            if (player.isJumping && player.isRotating) {
+                player.rotation += player.rotationSpeed * player.rotationDirection;
+
+                // Reverse rotation direction when reaching max rotation
+                if (Math.abs(player.rotation) >= player.maxRotation) {
+                    player.rotationDirection *= -1;
+                }
+            } else {
+                player.rotation = 0; // Reset rotation if not jumping or not rotating
+            }
+
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            drawClouds();
+            drawPlatforms();
+            drawSpikes();
+            drawPlayer();
+            drawCounter();
+	    drawResetWall(); // Ensure drawResetWall() is called
+
+            requestAnimationFrame(updatePlayer);
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', event => {
+            if (event.code === 'Space' && !player.isJumping) {
+                player.dy = jumpForce;
+                player.isJumping = true;
+                player.isRotating = true; // Enable rotation animation on jump
+            }
+function updatePlayer() {
+    // Existing code...
+
+    // Check if Score counter reaches 1200
+    if (Math.floor(scrollOffset / 10) >= 1200) {
+        drawYouWinScreen();
+        return; // Exit update loop when win condition met
+    }
+function drawYouWinScreen() {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw background
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw "YOU WIN" text
+    context.fillStyle = 'white';
+    context.font = 'bold 60px Arial';
+    context.fillText('YOU WIN!', canvas.width / 2 - 150, canvas.height / 2);
+
+    // Display final score
+    context.font = 'bold 40px Arial';
+    context.fillText(`Final Score: ${Math.floor(scrollOffset / 10)}`, canvas.width / 2 - 150, canvas.height / 2 + 60);
+}
+function resetPlayer() {
+    player.x = canvas.width / 4;
+    player.y = canvas.height - 30;
+    player.dy = 0;
+    scrollOffset = 0;
+    teleportCounter++;
+
+    // Check if game was won and reset to start game again
+    if (Math.floor(scrollOffset / 10) >= 1200) {
+        completedCounter = 0;
+        teleportCounter = 0;
+    }
+}
+
+
+    // Existing code...
+}
+
+        });
+
+        // Initial function calls
+        generateClouds();
+        updatePlayer();
+
+        setInterval(generateClouds, 5000); // Generate clouds every 5 seconds
+
+    </script>
+</body>
+</html>

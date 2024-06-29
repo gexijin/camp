@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shooting Game</title>
+<style>
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+    }
+    canvas {
+        border: 1px solid black;
+    }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="400" height="400"></canvas>
+
+<script>
+// Game variables
+let canvas = document.getElementById('gameCanvas');
+let ctx = canvas.getContext('2d');
+let playerWidth = 50;
+let playerHeight = 20;
+let playerX = (canvas.width - playerWidth) / 2;
+let playerY = canvas.height - playerHeight - 10;
+let playerSpeed = 5;
+let projectiles = [];
+let targets = [];
+let targetWidth = 20;
+let targetHeight = 20;
+let targetSpeed = 2;
+let score = 0;
+
+// Event listeners
+document.addEventListener('keydown', keyDownHandler);
+document.addEventListener('keyup', keyUpHandler);
+
+function keyDownHandler(event) {
+    if (event.key === 'a' || event.key === 'A') {
+        movePlayer(-playerSpeed);
+    } else if (event.key === 'd' || event.key === 'D') {
+        movePlayer(playerSpeed);
+    } else if (event.key === ' ' && projectiles.length < 1) {
+        projectiles.push({ x: playerX + playerWidth / 2, y: playerY });
+    }
+}
+
+function keyUpHandler(event) {
+    if ((event.key === 'a' || event.key === 'A') || (event.key === 'd' || event.key === 'D')) {
+        movePlayer(0);
+    }
+}
+
+function movePlayer(dx) {
+    playerX += dx;
+    if (playerX < 0) {
+        playerX = 0;
+    } else if (playerX > canvas.width - playerWidth) {
+        playerX = canvas.width - playerWidth;
+    }
+}
+
+function drawPlayer() {
+    ctx.beginPath();
+    ctx.rect(playerX, playerY, playerWidth, playerHeight);
+    ctx.fillStyle = 'blue';
+    ctx.fill();
+    ctx.closePath();
+}
+
+function drawProjectiles() {
+    for (let i = 0; i < projectiles.length; i++) {
+        ctx.beginPath();
+        ctx.arc(projectiles[i].x, projectiles[i].y, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'red';
+        ctx.fill();
+        ctx.closePath();
+        projectiles[i].y -= 4; // Adjust projectile speed
+        // Remove projectiles that are out of bounds
+        if (projectiles[i].y < 0) {
+            projectiles.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function drawTargets() {
+    for (let i = 0; i < targets.length; i++) {
+        ctx.beginPath();
+        ctx.rect(targets[i].x, targets[i].y, targetWidth, targetHeight);
+        ctx.fillStyle = 'green';
+        ctx.fill();
+        ctx.closePath();
+        targets[i].x += targetSpeed;
+        // Remove targets that are out of bounds
+        if (targets[i].x > canvas.width) {
+            targets.splice(i, 1);
+            i--;
+        }
+    }
+}
+
+function generateTargets() {
+    if (Math.random() < 0.01) { // Adjust target spawn rate
+        let randomY = Math.random() * (canvas.height - targetHeight);
+        targets.push({ x: 0, y: randomY });
+    }
+}
+
+function collisionDetection() {
+    for (let i = 0; i < projectiles.length; i++) {
+        for (let j = 0; j < targets.length; j++) {
+            if (projectiles[i] && targets[j] &&
+                projectiles[i].x >= targets[j].x &&
+                projectiles[i].x <= targets[j].x + targetWidth &&
+                projectiles[i].y >= targets[j].y &&
+                projectiles[i].y <= targets[j].y + targetHeight) {
+                projectiles.splice(i, 1);
+                targets.splice(j, 1);
+                score++;
+            }
+        }
+    }
+}
+
+function drawScore() {
+    ctx.font = '16px Arial';
+    ctx.fillStyle = 'black';
+    ctx.fillText('Score: ' + score, 10, 20);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawPlayer();
+    drawProjectiles();
+    drawTargets();
+    collisionDetection();
+    drawScore();
+    generateTargets();
+    requestAnimationFrame(draw);
+}
+
+draw();
+
+</script>
+</body>
+</html>

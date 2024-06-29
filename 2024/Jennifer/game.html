@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wizard Fight</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1e1640;
+        }
+        canvas {
+            border: 1px solid #fff;
+            background-image: url('background.png'); /* Set background image */
+            background-size: cover; /* Cover the entire canvas */
+            background-repeat: no-repeat; /* Prevent background from repeating */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+        // Initialize canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        const SCREEN_WIDTH = canvas.width;
+        const SCREEN_HEIGHT = canvas.height;
+        const WHITE = '#ffffff';
+        const RED = '#ff0000';
+        const BLUE = '#0000ff';
+        const YELLOW = '#ffff00';
+
+        // Player settings
+        const playerWidth = 70; // Increased player width
+        const playerHeight = 70; // Increased player height
+        let playerX = SCREEN_WIDTH / 2 - playerWidth / 2;
+        let playerY = SCREEN_HEIGHT - playerHeight - 20; // Initial position at the bottom
+        const playerSpeed = 3; // Normal player speed
+        const jumpSpeed = 5; // Speed while jumping
+        const jumpStrength = 10; // Reduced jump strength
+        const gravity = 0.2; // Further reduced gravity for slower falling
+        let jumpVelocity = 0; // Vertical velocity for jumping
+        let isJumping = false;
+        let isMovingLeft = false;
+        let isMovingRight = false;
+        let playerImage; // Variable to hold the player image
+
+        // Load the player images
+        let spriteLeftLoaded = false;
+        let spriteLeftWalkLoaded = false;
+        let spriteRightLoaded = false;
+        let spriteRightWalkLoaded = false;
+        let spriteJumpLeftLoaded = false;
+        let spriteJumpRightLoaded = false;
+        let spriteFallLeftLoaded = false;
+        let spriteFallRightLoaded = false;
+
+        let loadCount = 0;
+
+        function checkLoadComplete() {
+            loadCount++;
+            if (loadCount === 8) {
+                startGame();
+            }
+        }
+
+        const playerImageLeft = new Image();
+        playerImageLeft.onload = function() {
+            spriteLeftLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageLeft.src = 'sprite-left.png'; // Image facing left
+
+        const playerImageLeftWalk = new Image();
+        playerImageLeftWalk.onload = function() {
+            spriteLeftWalkLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageLeftWalk.src = 'sprite-leftwalk.png'; // Image walking left
+
+        const playerImageRight = new Image();
+        playerImageRight.onload = function() {
+            spriteRightLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageRight.src = 'sprite-right.png'; // Image facing right
+
+        const playerImageRightWalk = new Image();
+        playerImageRightWalk.onload = function() {
+            spriteRightWalkLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageRightWalk.src = 'sprite-rightwalk.png'; // Image walking right
+
+        const playerImageJumpLeft = new Image();
+        playerImageJumpLeft.onload = function() {
+            spriteJumpLeftLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageJumpLeft.src = 'sprite-jumpleft.png'; // Image while jumping left
+
+        const playerImageJumpRight = new Image();
+        playerImageJumpRight.onload = function() {
+            spriteJumpRightLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageJumpRight.src = 'sprite-jumpright.png'; // Image while jumping right
+
+        const playerImageFallLeft = new Image();
+        playerImageFallLeft.onload = function() {
+            spriteFallLeftLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageFallLeft.src = 'sprite-fallleft.png'; // Image while falling left
+
+        const playerImageFallRight = new Image();
+        playerImageFallRight.onload = function() {
+            spriteFallRightLoaded = true;
+            checkLoadComplete();
+        };
+        playerImageFallRight.src = 'sprite-fallright.png'; // Image while falling right
+let magicImage = new Image(); 
+magicImage.src = 'magic.png'; 
+magicImage.onload = function() {
+render(); 
+};
+
+        function startGame() {
+            playerImage = playerImageRight; // Default initial image
+            gameLoop();
+        }
+
+        // Player health
+        let playerHealth = 20; // Initial health
+        const healthBarWidth = 200;
+        const healthBarHeight = 20;
+
+        // Player bullets
+        const playerBulletWidth = 50;
+        const playerBulletHeight = 40;
+        const playerBulletSpeed = 10; // Bullet speed for the player
+        let playerBullets = [];
+
+        // Enemy settings
+        const enemyWidth = 50;
+        const enemyHeight = 50;
+        const enemySpeed = 1; // Reduced enemy speed
+        const maxEnemies = 5; // Maximum number of enemies
+        const enemySpawnDelay = 3000; // Increased delay between enemy spawns (in milliseconds)
+        const enemyAttackCooldown = 1000; // Cooldown between enemy attacks (in milliseconds)
+        const enemyAttackRange = 150; // Range within which enemies will start attacking
+        let lastEnemySpawnTime = 0;
+        let enemies = [];
+
+        // Enemy types
+        const ENEMY_TYPE_NORMAL = 1;
+        const ENEMY_TYPE_MEDIUM = 2;
+        const ENEMY_TYPE_HARD = 3;
+
+        // Damage values
+        const ENEMY_DAMAGE_NORMAL = 1;
+        const ENEMY_DAMAGE_MEDIUM = 1;
+        const ENEMY_DAMAGE_HARD = 2;
+
+        // Game variables
+        let lastDirection = 'right'; // Track the last movement direction ('left' or 'right')
+        let isGameOver = false; // Game over flag
+
+        // Handle keydown and keyup events
+        let moveLeft = false;
+        let moveRight = false;
+
+        window.addEventListener('keydown', function(event) {
+            if (event.key === 'a' || event.key === 'A') {
+                moveLeft = true;
+                moveRight = false; // Ensure only one direction is active
+                isMovingLeft = true;
+                isMovingRight = false;
+                lastDirection = 'left'; // Update last direction to left
+            } else if (event.key === 'd' || event.key === 'D') {
+                moveRight = true;
+                moveLeft = false; // Ensure only one direction is active
+                isMovingRight = true;
+                isMovingLeft = false;
+                lastDirection = 'right'; // Update last direction to right
+            } else if (event.key === ' ' || event.key === 'Spacebar') {
+                jump();
+            }
+        });
+
+        window.addEventListener('keyup', function(event) {
+            if (event.key === 'a' || event.key === 'A') {
+                moveLeft = false;
+                isMovingLeft = false;
+            } else if (event.key === 'd' || event.key === 'D') {
+                moveRight = false;
+                isMovingRight = false;
+            }
+        });
+
+        // Handle mouse click for shooting
+        canvas.addEventListener('mousedown', function(event) {
+            shoot();
+        });
+
+        // Handle player jumping
+        function jump() {
+            if (!isJumping && playerY === SCREEN_HEIGHT - playerHeight - 20) { // Only jump if on ground
+                isJumping = true;
+                jumpVelocity = jumpStrength;
+            }
+        }
+
+        // Handle shooting
+        function shoot() {
+            let bulletVelocityX = 0;
+            if (lastDirection === 'left') {
+                bulletVelocityX = -playerBulletSpeed; // Shoot left
+            } else if (lastDirection === 'right') {
+                bulletVelocityX = playerBulletSpeed; // Shoot right
+            }
+            // Ensure bullets are shot horizontally only
+            if (bulletVelocityX !== 0) {
+                playerBullets.push({
+                    x: playerX + playerWidth / 2 - playerBulletWidth / 2,
+                    y: playerY + playerHeight / 2 - playerBulletHeight / 2,
+                    velocityX: bulletVelocityX,
+                    velocityY: 0
+                });
+            }
+        }
+
+        // Spawn enemy outside the screen borders
+        function spawnEnemy(type) {
+            if (enemies.length < maxEnemies) {
+                const side = Math.random() < 0.5 ? 'left' : 'right';
+                let enemyX, enemyVelocityX, enemyHealth, enemyColor, enemyDamage, enemyCooldown;
+                switch (type) {
+                    case ENEMY_TYPE_NORMAL:
+                        enemyX = side === 'left' ? -enemyWidth : SCREEN_WIDTH;
+                        enemyVelocityX = side === 'left' ? enemySpeed : -enemySpeed;
+                        enemyHealth = 1;
+                        enemyColor = BLUE;
+                        enemyDamage = ENEMY_DAMAGE_NORMAL;
+                        enemyCooldown = enemyAttackCooldown;
+                        break;
+                    case ENEMY_TYPE_MEDIUM:
+                        enemyX = side === 'left' ? -enemyWidth : SCREEN_WIDTH;
+                        enemyVelocityX = side === 'left' ? enemySpeed * 0.8 : -enemySpeed * 0.8;
+                        enemyHealth = 3;
+                        enemyColor = YELLOW;
+                        enemyDamage = ENEMY_DAMAGE_MEDIUM;
+                        enemyCooldown = enemyAttackCooldown * 1.5;
+                        break;
+                    case ENEMY_TYPE_HARD:
+                        enemyX = side === 'left' ? -enemyWidth : SCREEN_WIDTH;
+                        enemyVelocityX = side === 'left' ? enemySpeed * 0.6 : -enemySpeed * 0.6;
+                        enemyHealth = 7;
+                        enemyColor = RED;
+                        enemyDamage = ENEMY_DAMAGE_HARD;
+                        enemyCooldown = enemyAttackCooldown * 2;
+                        break;
+                    default:
+                        return;
+                }
+                enemies.push({
+                    x: enemyX,
+                    y: SCREEN_HEIGHT - enemyHeight - 20,
+                    width: enemyWidth,
+                    height: enemyHeight,
+                    velocityX: enemyVelocityX,
+                    velocityY: 0,
+                    health: enemyHealth,
+                    color: enemyColor,
+                    damage: enemyDamage,
+                    cooldown: enemyCooldown,
+                    lastAttackTime: 0 // Initialize last attack time for this enemy
+                });
+            }
+        }
+
+        // Enemy AI
+        function enemyAI(enemy) {
+            const playerCenterX = playerX + playerWidth / 2;
+            const enemyCenterX = enemy.x + enemy.width / 2;
+            if (Math.abs(playerCenterX - enemyCenterX) < enemyAttackRange) {
+                // Player is within attack range, move towards player
+                if (playerCenterX < enemyCenterX) {
+                    enemy.velocityX = -enemySpeed; // Move left
+                } else {
+                    enemy.velocityX = enemySpeed; // Move right
+                }
+            } else {
+                // Player is outside attack range, move horizontally
+                if (enemy.x <= 0) {
+                    enemy.velocityX = enemySpeed; // Move right
+                } else if (enemy.x + enemy.width >= SCREEN_WIDTH) {
+                    enemy.velocityX = -enemySpeed; // Move left
+                }
+            }
+        }
+
+        // Handle attack cooldown and attacking
+        function handleEnemyAttack(enemy) {
+            if (Date.now() - enemy.lastAttackTime > enemy.cooldown) {
+                // Attack player if within range
+                if (enemy.x <= playerX + playerWidth &&
+                    enemy.x + enemy.width >= playerX &&
+                    enemy.y <= playerY + playerHeight &&
+                    enemy.y + playerHeight >= playerY) {
+                    playerHealth -= enemy.damage;
+                    enemy.lastAttackTime = Date.now();
+                    if (playerHealth <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+        }
+
+        // Collision detection
+        function checkCollisions() {
+            // Player bullet-enemy collision
+            for (let i = playerBullets.length - 1; i >= 0; i--) {
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    let bullet = playerBullets[i];
+                    let enemy = enemies[j];
+                    if (bullet.x < enemy.x + enemy.width &&
+                        bullet.x + playerBulletWidth > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + playerBulletHeight > enemy.y) {
+                        enemy.health -= 1; // Decrease enemy health
+                        if (enemy.health <= 0) {
+                            enemies.splice(j, 1); // Remove enemy if health <= 0
+                        }
+                        playerBullets.splice(i, 1); // Remove bullet
+                        break; // Break inner loop (bullet)
+                    }
+                }
+            }
+
+            // Enemy-player collision
+            for (let enemy of enemies) {
+                if (playerX < enemy.x + enemy.width &&
+                    playerX + playerWidth > enemy.x &&
+                    playerY < enemy.y + enemy.height &&
+                    playerY + playerHeight > enemy.y) {
+                    handleEnemyAttack(enemy);
+                }
+            }
+        }
+
+        // Game over function
+        function gameOver() {
+            if (!isGameOver) {
+                isGameOver = true;
+                // Display game over message or perform other actions
+                alert('Game Over! You lost all your health.');
+                // Reload the game or perform other actions as needed
+                location.reload();
+            }
+        }
+
+        // Game loop
+        function gameLoop(timestamp) {
+            // Clear canvas
+            ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+            // Apply gravity and handle jumping
+            if (isJumping) {
+                playerY -= jumpVelocity;
+                jumpVelocity -= gravity;
+
+                // Check if landed
+                if (playerY >= SCREEN_HEIGHT - playerHeight - 20) {
+                    playerY = SCREEN_HEIGHT - playerHeight - 20;
+                    isJumping = false;
+                    jumpVelocity = jumpStrength; // Reset jump velocity for next jump
+                }
+            }
+
+            // Change player image based on movement direction and state
+            if (isJumping) {
+                if (lastDirection === 'left') {
+                    playerImage = playerImageJumpLeft;
+                } else if (lastDirection === 'right') {
+                    playerImage = playerImageJumpRight;
+                }
+            } else if (isMovingLeft) {
+                if (lastDirection === 'left') {
+                    animatePlayer(playerImageLeft, playerImageLeftWalk);
+                } else if (lastDirection === 'right') {
+                    playerImage = playerImageLeft; // Switch to left facing image
+                }
+            } else if (isMovingRight) {
+                if (lastDirection === 'right') {
+                    animatePlayer(playerImageRight, playerImageRightWalk);
+                } else if (lastDirection === 'left') {
+                    playerImage = playerImageRight; // Switch to right facing image
+                }
+            } else {
+                // Default image when not moving
+                if (lastDirection === 'left') {
+                    playerImage = playerImageLeft;
+                } else if (lastDirection === 'right') {
+                    playerImage = playerImageRight;
+                }
+            }
+
+            // Move player
+            if (moveLeft) {
+                playerX -= isJumping ? jumpSpeed : playerSpeed;
+            }
+            if (moveRight) {
+                playerX += isJumping ? jumpSpeed : playerSpeed;
+            }
+            // Ensure player stays within bounds
+            if (playerX < 0) {
+                playerX = 0;
+            }
+            if (playerX + playerWidth > SCREEN_WIDTH) {
+                playerX = SCREEN_WIDTH - playerWidth;
+            }
+
+            // Spawn enemies outside the screen borders
+            if (timestamp - lastEnemySpawnTime > enemySpawnDelay) {
+                spawnEnemy(ENEMY_TYPE_NORMAL);
+                spawnEnemy(ENEMY_TYPE_MEDIUM);
+                spawnEnemy(ENEMY_TYPE_HARD);
+                lastEnemySpawnTime = timestamp;
+            }
+
+            // Move player bullets
+            for (let bullet of playerBullets) {
+                bullet.x += bullet.velocityX;
+                bullet.y += bullet.velocityY;
+            }
+
+            // Move enemies and update AI
+            for (let enemy of enemies) {
+                enemyAI(enemy);
+                enemy.x += enemy.velocityX;
+                enemy.y += enemy.velocityY;
+                
+                // Keep enemies within screen bounds
+                if (enemy.x < 0) {
+                    enemy.x = 0;
+                    enemy.velocityX = -enemy.velocityX;
+                }
+                if (enemy.x + enemy.width > SCREEN_WIDTH) {
+                    enemy.x = SCREEN_WIDTH - enemy.width;
+                    enemy.velocityX = -enemy.velocityX;
+                }
+            }
+
+            // Draw player
+            ctx.drawImage(playerImage, playerX, playerY, playerWidth, playerHeight);
+
+            // Draw player health bar
+            ctx.fillStyle = WHITE;
+            ctx.fillRect(SCREEN_WIDTH - healthBarWidth - 20, 10, healthBarWidth, healthBarHeight);
+            ctx.fillStyle = BLUE;
+            ctx.fillRect(SCREEN_WIDTH - healthBarWidth - 20, 10, healthBarWidth * (playerHealth / 20), healthBarHeight);
+
+            // Draw player bullets 
+for (let bullet of playerBullets) { 
+// Assuming magicImage is fully loaded 
+if (magicImage.complete) { 
+ctx.drawImage(magicImage, bullet.x, bullet.y, playerBulletWidth, playerBulletHeight); 
+} else { 
+// Fallback in case image is not loaded 
+ctx.fillStyle = WHITE; 
+ctx.fillRect(bullet.x, bullet.y, playerBulletWidth, playerBulletHeight);
+} 
+}
+
+            // Draw enemies
+            for (let enemy of enemies) {
+                ctx.fillStyle = enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+            }
+
+            // Check collisions
+            checkCollisions();
+
+            // Request next frame
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Function to animate player
+        let currentFrame = 0;
+        let frameCount = 0;
+
+        function animatePlayer(image1, image2) {
+            if (frameCount % 10 === 0) { // Change frame every 10 frames (adjust speed as needed)
+                currentFrame = (currentFrame + 1) % 2;
+                playerImage = currentFrame === 0 ? image1 : image2;
+            }
+            frameCount++;
+        }
+
+        // Start game loop
+        startGame();
+    </script>
+</body>
+</html>
+
+
+
