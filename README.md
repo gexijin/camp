@@ -4,3 +4,6 @@ For high school students
 
 
 [2024](https://gexijin.github.io/camp/2024/)
+
+
+[2025](https://gexijin.github.io/camp/2025/)
