@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>🦍 Donkey Kong</title>
+  <style>
+    body {
+      background: black;
+      color: white;
+      text-align: center;
+      font-family: Arial;
+    }
+    #gameCanvas {
+      border: 3px solid white;
+      background: #1e1e1e;
+      display: block;
+      margin: 20px auto;
+    }
+    #score {
+      font-size: 20px;
+      margin-top: 10px;
+    }
+    .touch-controls {
+      margin-top: 10px;
+    }
+    .btn {
+      background-color: #444;
+      color: white;
+      border: 2px solid white;
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+      border-radius: 10px;
+    }
+    .btn:active {
+      background-color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h2>🦍 Donkey Kong</h2>
+  <div id="score">Score: 0</div>
+  <canvas id="gameCanvas" width="400" height="500"></canvas>
+
+  <!-- Touch Controls -->
+  <div class="touch-controls">
+    <button class="btn" id="leftBtn">◀️ Left</button>
+    <button class="btn" id="jumpBtn">⬆️ Jump</button>
+    <button class="btn" id="rightBtn">▶️ Right</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let player = {x: 20, y: 440, w: 20, h: 30, dx: 0, dy: 0, gravity: 0.5, jump: -10, grounded: false};
+    let princess = {x: 10, y: 90, w: 20, h: 30};
+    let kong = {x: 340, y: 90, w: 30, h: 30};
+    let platforms = [
+      {x: 0, y: 470, w: 400, h: 10},
+      {x: 0, y: 400, w: 300, h: 10},
+      {x: 100, y: 330, w: 300, h: 10},
+      {x: 0, y: 260, w: 300, h: 10},
+      {x: 100, y: 190, w: 300, h: 10},
+      {x: 0, y: 120, w: 300, h: 10}
+    ];
+    let barrels = [];
+    let score = 0;
+    let gameRunning = true;
+
+    function resetGame() {
+      player.x = 20;
+      player.y = 440;
+      player.dx = 0;
+      player.dy = 0;
+      barrels = [];
+      score = 0;
+      gameRunning = true;
+      document.getElementById('score').innerText = 'Score: 0';
+    }
+
+    function spawnBarrel() {
+      if (!gameRunning) return;
+      barrels.push({x: kong.x, y: kong.y, w: 15, h: 15, dx: -2, dy: 0});
+    }
+
+    setInterval(spawnBarrel, 2000);
+    setInterval(() => {
+      if (gameRunning) {
+        score++;
+        document.getElementById('score').innerText = 'Score: ' + score;
+      }
+    }, 1000);
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = 'orange';
+      ctx.fillRect(kong.x, kong.y, kong.w, kong.h);
+
+      ctx.fillStyle = 'pink';
+      ctx.fillRect(princess.x, princess.y, princess.w, princess.h);
+
+      ctx.fillStyle = '#888';
+      platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+
+      ctx.fillStyle = 'red';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      ctx.fillStyle = 'brown';
+      barrels.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
+    }
+
+    function update() {
+      if (!gameRunning) return;
+
+      player.dy += player.gravity;
+      player.y += player.dy;
+      player.x += player.dx;
+      player.grounded = false;
+
+      platforms.forEach(p => {
+        const abovePlatform = player.y + player.h <= p.y + 5;
+        const falling = player.dy >= 0;
+        const withinX = player.x + player.w > p.x && player.x < p.x + p.w;
+        const touchingY = player.y + player.h >= p.y && player.y + player.h <= p.y + p.h;
+
+        if (abovePlatform && falling && withinX && touchingY) {
+          player.y = p.y - player.h;
+          player.dy = 0;
+          player.grounded = true;
+        }
+      });
+
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
+
+      barrels.forEach(b => {
+        let onPlatform = false;
+        platforms.forEach(p => {
+          if (
+            b.y + b.h > p.y &&
+            b.y + b.h < p.y + p.h &&
+            b.x + b.w > p.x &&
+            b.x < p.x + p.w
+          ) {
+            b.y = p.y - b.h;
+            onPlatform = true;
+          }
+        });
+
+        if (onPlatform) {
+          b.x += b.dx;
+          if (b.x < 0 || b.x + b.w > canvas.width) b.dx *= -1;
+        } else {
+          b.y += 2;
+        }
+      });
+
+      barrels.forEach(b => {
+        if (
+          player.x < b.x + b.w &&
+          player.x + player.w > b.x &&
+          player.y < b.y + b.h &&
+          player.y + player.h > b.y
+        ) {
+          gameRunning = false;
+          alert('💥 Game Over! Your score: ' + score + '. Press OK to restart.');
+          location.reload();
+        }
+      });
+
+      if (
+        player.x < princess.x + princess.w &&
+        player.x + player.w > princess.x &&
+        player.y < princess.y + princess.h &&
+        player.y + player.h > princess.y
+      ) {
+        gameRunning = false;
+        alert('👑 You Win! Your score: ' + score + '. Press OK to restart.');
+        location.reload();
+      }
+
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.code === 'ArrowLeft') player.dx = -3;
+      if (e.code === 'ArrowRight') player.dx = 3;
+      if (e.code === 'Space' && player.grounded) player.dy = player.jump;
+    });
+
+    document.addEventListener('keyup', e => {
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') player.dx = 0;
+    });
+
+    // Touch support
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+    const jumpBtn = document.getElementById('jumpBtn');
+
+    let leftPressed = false;
+    let rightPressed = false;
+
+    function updateTouchMovement() {
+      if (leftPressed) player.dx = -3;
+      else if (rightPressed) player.dx = 3;
+      else player.dx = 0;
+    }
+
+    leftBtn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      leftPressed = true;
+      updateTouchMovement();
+    });
+    leftBtn.addEventListener('touchend', e => {
+      e.preventDefault();
+      leftPressed = false;
+      updateTouchMovement();
+    });
+
+    rightBtn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      rightPressed = true;
+      updateTouchMovement();
+    });
+    rightBtn.addEventListener('touchend', e => {
+      e.preventDefault();
+      rightPressed = false;
+      updateTouchMovement();
+    });
+
+    jumpBtn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (player.grounded) player.dy = player.jump;
+    });
+
+    resetGame();
+    update();
+  </script>
+</body>
+</html>

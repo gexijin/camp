@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NWS Radar and Data Viewer</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100vh; width: 100vw; display: flex; font-family: Arial, sans-serif; overflow: hidden;
+    background: #f5f8fa;
+  }
+  #map {
+    width: 66.66vw;
+    height: 100vh;
+    border: 2px solid #2f80ed;
+    box-sizing: border-box;
+    border-radius: 8px 0 0 8px;
+    box-shadow: 0 4px 15px rgba(47, 128, 237, 0.3);
+  }
+  #info {
+    width: 33.33vw;
+    height: 100vh;
+    padding: 30px 40px;
+    box-sizing: border-box;
+    background: linear-gradient(135deg,#f0f4f8,#d9e2ec);
+    box-shadow: -4px 0 15px rgba(0,0,0,0.1);
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    overflow-y: auto;
+    color: #334e68;
+    font-weight: 500;
+  }
+  .info-title {
+    font-size:1.8em;
+    margin-bottom: 22px;
+    color:#102a43;
+    font-weight:700;
+    letter-spacing:0.05em;
+    text-transform: uppercase;
+    user-select:none;
+  }
+  .info-item {
+    margin-bottom: 16px;
+    font-size: 1.15em;
+    line-height: 1.4;
+  }
+  .info-item span {
+    font-weight:700;
+    color:#243b53;
+  }
+  #clearSelectionBtn {
+    margin-top: 20px;
+    padding: 10px 15px;
+    background: #2f80ed;
+    border: none;
+    color: white;
+    font-weight: 600;
+    border-radius: 5px;
+    cursor: pointer;
+    user-select:none;
+    transition: background-color 0.3s ease;
+  }
+  #clearSelectionBtn:hover {
+    background: #255cb8;
+  }
+</style>
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <div class="info-title">NWS Radar and Data Viewer</div>
+    <div id="siteName" class="info-item">Select a radar site</div>
+    <div class="info-item">Temperature: <span id="tempValue">N/A</span> °C</div>
+    <div class="info-item">Dewpoint: <span id="dewpointValue">N/A</span> °C</div>
+    <div class="info-item">PWAT: <span id="pwatValue">N/A</span> mm</div>
+    <div class="info-item">Storm Direction: <span id="stormDirValue">N/A</span></div>
+    <div class="info-item">SRH: <span id="srhValue">N/A</span> m²/s²</div>
+    <div class="info-item">CAPE: <span id="capeValue">N/A</span> J/kg</div>
+    <div class="info-item">CINH: <span id="cinhValue">N/A</span> J/kg</div>
+    <button id="clearSelectionBtn">Clear Selection</button>
+  </div>
+
+  <script>
+    const radarSites = [
+  { id: 1, code: "KABR", name: "Aberdeen, SD", lat: 45.4536, lon: -98.3097 },
+  { id: 2, code: "KABX", name: "Albuquerque, NM", lat: 35.1494, lon: -106.5101 },
+  { id: 3, code: "KAMA", name: "Amarillo, TX", lat: 35.2335, lon: -101.4478 },
+  { id: 4, code: "KAPX", name: "Gaylord, MI", lat: 45.0481, lon: -84.6639 },
+  { id: 5, code: "KBBX", name: "Beale AFB, CA", lat: 39.4962, lon: -121.5960 },
+  { id: 6, code: "KBLX", name: "Billings, MT", lat: 45.5154, lon: -108.5777 },
+  { id: 7, code: "KBIS", name: "Bismarck, ND", lat: 46.8283, lon: -100.7837 },
+  { id: 8, code: "KBLU", name: "Blue Creek Lake, OH", lat: 41.6318, lon: -83.6836 },
+  { id: 9, code: "KBMX", name: "Birmingham, AL", lat: 33.1719, lon: -86.7694 },
+  { id: 10, code: "KBRO", name: "Brownsville, TX", lat: 25.9068, lon: -97.4257 },
+  { id: 11, code: "KBTX", name: "Burlington, NC", lat: 36.0744, lon: -79.5819 },
+  { id: 12, code: "KBTV", name: "Burlington, VT", lat: 44.4722, lon: -73.1532 },
+  { id: 13, code: "KCYS", name: "Cheyenne, WY", lat: 41.1494, lon: -104.7339 },
+  { id: 14, code: "KBYX", name: "Burlington, MA", lat: 42.4781, lon: -71.2072 },
+  { id: 15, code: "KCBX", name: "Columbia, MO", lat: 38.9200, lon: -92.2200 },
+  { id: 16, code: "KCLX", name: "Charlotte, NC", lat: 35.2078, lon: -80.9462 },
+  { id: 17, code: "KCRP", name: "Corpus Christi, TX", lat: 27.7832, lon: -97.3040 },
+  { id: 18, code: "KDDC", name: "Dodge City, KS", lat: 37.7632, lon: -99.9650 },
+  { id: 19, code: "KDFX", name: "Fort Worth, TX", lat: 32.5722, lon: -97.2983 },
+  { id: 20, code: "KDLH", name: "Duluth, MN", lat: 46.8530, lon: -92.1683 },
+  { id: 21, code: "KDMX", name: "Des Moines, IA", lat: 41.6080, lon: -93.6249 },
+  { id: 22, code: "KDOX", name: "Dover, DE", lat: 38.8283, lon: -75.0516 },
+  { id: 23, code: "KDVN", name: "Davenport, IA", lat: 41.6063, lon: -90.5474 },
+  { id: 24, code: "KDYX", name: "Dyer Brook, ME", lat: 47.9736, lon: -68.5889 },
+  { id: 25, code: "KEYX", name: "Key west, FL", lat: 24.5609, lon: -81.7475 },
+  // ...continued until all 159 entries...
+  { id: 159, code: "KLOT", name: "Chicago/Romeoville, IL", lat: 41.6050, lon: -88.0958 }
+];
+
+    const map = L.map('map').setView([39.8283,-98.5795],5);
+
+    // Base OSM tiles
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 10,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // NowCoast WMS Radar mosaic layer - correct params for Leaflet
+    const nwsRadarLayer = L.tileLayer.wms('https://nowcoast.noaa.gov/arcgis/services/nowcoast/radar_meteo_imagery_nexrad_time/MapServer/WMSServer', {
+      layers: '1',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      crs: L.CRS.EPSG3857,
+      opacity: 0.6,
+      attribution: 'NOAA NWS NowCoast'
+    }).addTo(map);
+
+    const RADIUS_METERS = 463000;
+
+    let markers = [];
+    let selectedSite = null;
+    let circle = null;
+    let greyOutLayer = null;
+
+    function clearSelection() {
+      if(circle) {
+        map.removeLayer(circle);
+        circle = null;
+      }
+      if(greyOutLayer) {
+        map.removeLayer(greyOutLayer);
+        greyOutLayer = null;
+      }
+      selectedSite = null;
+      document.getElementById("siteName").textContent = "Select a radar site";
+      document.getElementById("tempValue").textContent = "N/A";
+      document.getElementById("dewpointValue").textContent = "N/A";
+      document.getElementById("pwatValue").textContent = "N/A";
+      document.getElementById("stormDirValue").textContent = "N/A";
+      document.getElementById("srhValue").textContent = "N/A";
+      document.getElementById("capeValue").textContent = "N/A";
+      document.getElementById("cinhValue").textContent = "N/A";
+      map.setView([39.8283,-98.5795],5);
+    }
+
+    function addMarkers() {
+      radarSites.forEach(site => {
+        const marker = L.circleMarker([site.lat, site.lon], {radius:6, color:'blue', fillOpacity:0.7}).addTo(map);
+        marker.on('click', () => {
+          selectedSite = site;
+          map.setView([site.lat, site.lon], 5.5);
+          updateSiteInfo(site);
+          drawCircleAndGreyOut(site);
+        });
+        markers.push(marker);
+      });
+    }
+
+    // Create the polygon hole properly with lat/lng math — no screen point conversions
+    function drawCircleAndGreyOut(site) {
+      if(circle) map.removeLayer(circle);
+      if(greyOutLayer) map.removeLayer(greyOutLayer);
+
+      circle = L.circle([site.lat, site.lon], {
+        radius: RADIUS_METERS,
+        color: '#2f80ed',
+        weight: 3,
+        fillOpacity: 0,
+        interactive: false
+      }).addTo(map);
+
+      // World bounding polygon (lat,lng)
+      const outer = [
+        [-90, -180],
+        [-90, 180],
+        [90, 180],
+        [90, -180],
+        [-90, -180]
+      ];
+
+      // Circle polygon approx (lat,lng)
+      const circleLatLngs = [];
+      const pointsCount = 64;
+      for(let i=0; i<pointsCount; i++) {
+        const angle = (i / pointsCount) * 2 * Math.PI;
+        const dx = RADIUS_METERS * Math.cos(angle);
+        const dy = RADIUS_METERS * Math.sin(angle);
+
+        // Use turf or approximate formula to get lat/lng offset by meters:
+        const offsetLatLng = destinationPoint(site.lat, site.lon, dx, dy);
+        circleLatLngs.push([offsetLatLng.lat, offsetLatLng.lng]);
+      }
+
+      greyOutLayer = L.polygon([outer, circleLatLngs], {
+        color: 'grey',
+        weight: 0,
+        fillColor: 'grey',
+        fillOpacity: 0.5,
+        interactive: false
+      }).addTo(map);
+    }
+
+    // Calculate destination point given lat, lon and meter offsets east(dx), north(dy)
+    function destinationPoint(lat, lon, dx, dy) {
+      // Earth radius in meters
+      const R = 6378137;
+
+      const dLat = dy / R;
+      const dLon = dx / (R * Math.cos(Math.PI * lat / 180));
+
+      const newLat = lat + dLat * 180 / Math.PI;
+      const newLon = lon + dLon * 180 / Math.PI;
+      return { lat: newLat, lng: newLon };
+    }
+
+    async function fetchNWSBasic(site) {
+      try {
+        const pointResp = await fetch(`https://api.weather.gov/points/${site.lat},${site.lon}`, {
+          headers: {
+            'User-Agent': 'NWS Radar and Data Viewer (jyanzick08@gmail.com)'
+          }
+        });
+        if (!pointResp.ok) throw new Error("NWS points failed");
+        const pointData = await pointResp.json();
+
+        const gridUrl = pointData.properties.forecastGridData;
+        const gridResp = await fetch(gridUrl, {
+          headers: {
+            'User-Agent': 'NWS Radar and Data Viewer (jyanzick08@gmail.com)'
+          }
+        });
+        if (!gridResp.ok) throw new Error("NWS grid data failed");
+        const gridData = await gridResp.json();
+
+        const getLatest = (prop) =>
+          Array.isArray(prop?.values) ? prop.values.find(v => v.value !== null)?.value : null;
+
+        return {
+          Temperature: getLatest(gridData.properties.temperature)?.toFixed(1) ?? "N/A",
+          Dewpoint: getLatest(gridData.properties.dewpoint)?.toFixed(1) ?? "N/A",
+          StormDirection: getLatest(gridData.properties.windDirection)?.toFixed(0) + "°" ?? "N/A"
+        };
+      } catch(e) {
+        console.error(e);
+        return {
+          Temperature: "N/A",
+          Dewpoint: "N/A",
+          StormDirection: "N/A"
+        };
+      }
+    }
+
+    async function fetchAdvancedVars(site) {
+      // Placeholder for advanced vars, replace with actual SPC mesoanalysis or other source
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve({
+            CAPE: (Math.random()*1500).toFixed(0),
+            CINH: (Math.random()*-100).toFixed(0),
+            SRH: (Math.random()*200).toFixed(0),
+            PWAT: (Math.random()*50).toFixed(2)
+          });
+        }, 600);
+      });
+    }
+
+    async function updateSiteInfo(site) {
+      document.getElementById("siteName").textContent = `Site: ${site.name} (${site.code})`;
+
+      const basic = await fetchNWSBasic(site);
+      document.getElementById("tempValue").textContent = basic.Temperature;
+      document.getElementById("dewpointValue").textContent = basic.Dewpoint;
+      document.getElementById("stormDirValue").textContent = basic.StormDirection;
+
+      const adv = await fetchAdvancedVars(site);
+      document.getElementById("capeValue").textContent = adv.CAPE ?? "N/A";
+      document.getElementById("cinhValue").textContent = adv.CINH ?? "N/A";
+      document.getElementById("srhValue").textContent = adv.SRH ?? "N/A";
+      document.getElementById("pwatValue").textContent = adv.PWAT ?? "N/A";
+    }
+
+    addMarkers();
+
+	let radarLayer = null;
+
+function getLatestAvailableFrameTime() {
+  const now = new Date();
+  now.setUTCMinutes(Math.floor(now.getUTCMinutes() / 5) * 5);
+  now.setUTCSeconds(0);
+  now.setUTCMilliseconds(0);
+  return now;
+}
+
+function formatTimestamp(t) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}${pad(t.getUTCHours())}${pad(t.getUTCMinutes())}`;
+}
+
+function loadNationalRadar() {
+  const latestTime = getLatestAvailableFrameTime();
+  const timestamp = formatTimestamp(latestTime);
+  const tileURL = `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/ridge::USCOMP-N0Q-${timestamp}/{z}/{x}/{y}.png`;
+
+  if (radarLayer) {
+    map.removeLayer(radarLayer);
+  }
+
+  radarLayer = L.tileLayer(tileURL, {
+    opacity: 0.6,
+    attribution: "Iowa State Mesonet"
+  }).addTo(map);
+}
+
+// Call it once at startup
+loadNationalRadar();
+
+// Optional: Refresh radar every 5 minutes if you want
+setInterval(loadNationalRadar, 5 * 60 * 1000);
+
+    document.getElementById('clearSelectionBtn').addEventListener('click', clearSelection);
+
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+

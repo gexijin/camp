@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Old Style Hunting Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      background-color: #87CEEB;
+    }
+    button {
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="menu" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #333; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; font-family: sans-serif;">
+    <h1>Old Style Hunting Game</h1>
+    <p>Your Coins: $<span id="currencyDisplay">0</span></p>
+    <p>Select Your Rifle Skin:</p>
+    <div>
+      <button onclick="selectSkin('gray')">Default</button>
+      <button onclick="selectSkin('green')">Green Camo ($1000)</button>
+      <button onclick="selectSkin('blue')">Blue Steel ($1000)</button>
+    </div>
+    <p>Select Your Gun Type:</p>
+    <div>
+      <button onclick="selectGun('rifle')">Rifle</button>
+      <button onclick="selectGun('shotgun')">Shotgun</button>
+      <button onclick="selectGun('sniper')">Sniper</button>
+    </div>
+    <h3>Shop - Upgrades</h3>
+    <div>
+      <button onclick="buyUpgrade('fasterReload')">Faster Reload ($500)</button>
+      <button onclick="buyUpgrade('biggerMag')">Bigger Magazine ($800)</button>
+      <button onclick="buyUpgrade('zoomScope')">Zoom Scope ($1000)</button>
+    </div>
+    <button onclick="startGame()" style="margin-top: 20px; font-size: 20px;">Start Game</button>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let selectedSkin = localStorage.getItem("selectedSkin") || 'gray';
+    let selectedGun = localStorage.getItem("selectedGun") || 'rifle';
+    let currency = parseInt(localStorage.getItem("currency")) || 1000;
+    let unlockedSkins = JSON.parse(localStorage.getItem("unlockedSkins")) || ['gray'];
+    let upgrades = JSON.parse(localStorage.getItem("upgrades")) || {
+      fasterReload: false,
+      biggerMag: false,
+      zoomScope: false
+    };
+
+    let ammo = upgrades.biggerMag ? 10 : 5;
+    let maxAmmo = ammo;
+    let isReloading = false;
+    let reloadTime = upgrades.fasterReload ? 1000 : 2000;
+    let lastShotTime = 0;
+
+    let animals = [];
+    let level = 1;
+    let lives = 3;
+    let score = 0;
+
+    const bullets = [];
+
+    let keys = {};
+    document.addEventListener("keydown", e => {
+      keys[e.key] = true;
+      if (e.key === " ") {
+        shoot();
+      }
+    });
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    function shoot() {
+      if (isReloading) return;
+      if (ammo > 0) {
+        lastShotTime = Date.now();
+        ammo--;
+        bullets.push({ x: rifle.x + 90, y: rifle.y + 5, speed: 10 });
+      } else {
+        reloadGun();
+      }
+    }
+
+    function updateCurrencyDisplay() {
+      document.getElementById("currencyDisplay").innerText = currency;
+    }
+
+    function saveGameData() {
+      localStorage.setItem("currency", currency);
+      localStorage.setItem("unlockedSkins", JSON.stringify(unlockedSkins));
+      localStorage.setItem("upgrades", JSON.stringify(upgrades));
+      localStorage.setItem("selectedSkin", selectedSkin);
+      localStorage.setItem("selectedGun", selectedGun);
+    }
+
+    function selectSkin(color) {
+      const skinCosts = { 'green': 1000, 'blue': 1000 };
+      if (!unlockedSkins.includes(color)) {
+        if (currency < skinCosts[color]) {
+          alert("You need $" + skinCosts[color] + " to unlock this skin!");
+          return;
+        } else {
+          currency -= skinCosts[color];
+          unlockedSkins.push(color);
+          alert(color + " skin unlocked!");
+        }
+      }
+      selectedSkin = color;
+      saveGameData();
+      updateCurrencyDisplay();
+    }
+
+    function selectGun(gunType) {
+      selectedGun = gunType;
+      saveGameData();
+    }
+
+    function buyUpgrade(type) {
+      const costs = {
+        fasterReload: 500,
+        biggerMag: 800,
+        zoomScope: 1000
+      };
+      if (upgrades[type]) {
+        alert("Already purchased!");
+        return;
+      }
+      if (currency < costs[type]) {
+        alert("Not enough coins!");
+        return;
+      }
+      currency -= costs[type];
+      upgrades[type] = true;
+      if (type === 'biggerMag') {
+        maxAmmo = 10;
+        ammo = maxAmmo;
+      }
+      if (type === 'fasterReload') {
+        reloadTime = 1000;
+      }
+      saveGameData();
+      updateCurrencyDisplay();
+      alert(type + " upgrade purchased!");
+    }
+
+    function startGame() {
+      document.getElementById("menu").style.display = "none";
+      updateCurrencyDisplay();
+      maxAmmo = upgrades.biggerMag ? 10 : 5;
+      reloadTime = upgrades.fasterReload ? 1000 : 2000;
+      generateAnimals();
+      gameLoop();
+    }
+
+    function reloadGun() {
+      if (!isReloading) {
+        isReloading = true;
+        setTimeout(() => {
+          ammo = maxAmmo;
+          isReloading = false;
+        }, reloadTime);
+      }
+    }
+
+    function generateAnimals() {
+      animals = [];
+      for (let i = 0; i < level * 3; i++) {
+        animals.push({
+          x: canvas.width + Math.random() * 500,
+          y: 100 + Math.random() * (canvas.height - 200),
+          speed: 1 + Math.random() * 2,
+          alive: true
+        });
+      }
+    }
+
+    function drawAnimals() {
+      ctx.fillStyle = "brown";
+      animals.forEach(animal => {
+        if (animal.alive) {
+          ctx.fillRect(animal.x, animal.y, 40, 20);
+        }
+      });
+    }
+
+    function updateAnimals() {
+      animals.forEach(animal => {
+        animal.x -= animal.speed;
+        if (animal.alive && animal.x < 0) {
+          animal.alive = false;
+          lives--;
+        }
+      });
+    }
+
+    function checkLevelProgress() {
+      if (animals.every(a => !a.alive)) {
+        level++;
+        generateAnimals();
+      }
+    }
+
+    function checkHit(x, y) {
+      animals.forEach(animal => {
+        if (animal.alive && x >= animal.x && x <= animal.x + 40 && y >= animal.y && y <= animal.y + 20) {
+          animal.alive = false;
+          score += 100;
+          currency += 100;
+          saveGameData();
+          updateCurrencyDisplay();
+        }
+      });
+    }
+
+    const rifle = {
+      x: 100,
+      y: canvas.height / 2,
+      draw() {
+        if (keys['ArrowUp']) this.y -= 5;
+        if (keys['ArrowDown']) this.y += 5;
+        let recoilOffset = (Date.now() - lastShotTime < 100) ? -5 : 0;
+
+        if (selectedGun === 'rifle') {
+          ctx.fillStyle = "#222";
+          ctx.fillRect(this.x + recoilOffset, this.y, 100, 10);
+          ctx.fillStyle = selectedSkin;
+          ctx.fillRect(this.x + recoilOffset + 10, this.y - 4, 60, 18);
+        } else if (selectedGun === 'shotgun') {
+          ctx.fillStyle = selectedSkin;
+          ctx.fillRect(this.x + recoilOffset, this.y - 10, 120, 20);
+          ctx.fillStyle = "#555";
+          ctx.fillRect(this.x + recoilOffset + 90, this.y - 5, 30, 10);
+        } else if (selectedGun === 'sniper') {
+          ctx.fillStyle = selectedSkin;
+          ctx.fillRect(this.x + recoilOffset, this.y - 6, 150, 12);
+          ctx.fillStyle = "#999";
+          ctx.fillRect(this.x + recoilOffset + 120, this.y - 2, 20, 4);
+          ctx.beginPath();
+          ctx.arc(this.x + recoilOffset + 130, this.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (Date.now() - lastShotTime < 100) {
+          ctx.fillStyle = "yellow";
+          ctx.beginPath();
+          ctx.arc(this.x + 110, this.y + 5, 10, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.strokeStyle = "red";
+        ctx.beginPath();
+        ctx.moveTo(this.x + 110, this.y + 5);
+        ctx.lineTo(canvas.width, this.y + 5);
+        ctx.stroke();
+      }
+    };
+
+    canvas.addEventListener("click", (e) => shoot());
+
+    function updateBullets() {
+      ctx.fillStyle = "black";
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.speed;
+        ctx.fillRect(b.x, b.y - 2, 10, 4);
+        checkHit(b.x, b.y);
+        if (b.x > canvas.width) bullets.splice(i, 1);
+      }
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "20px sans-serif";
+      ctx.fillText("Ammo: " + ammo + (isReloading ? " (reloading...)" : ""), 20, 40);
+      ctx.fillText("Coins: $" + currency, 20, 70);
+      ctx.fillText("Level: " + level, 20, 100);
+      ctx.fillText("Lives: " + lives, 20, 130);
+      ctx.fillText("Score: " + score, 20, 160);
+      rifle.draw();
+      drawAnimals();
+      updateAnimals();
+      updateBullets();
+      checkLevelProgress();
+      if (lives > 0) {
+        requestAnimationFrame(gameLoop);
+      } else {
+        ctx.fillStyle = "red";
+        ctx.font = "50px sans-serif";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+      }
+    }
+
+    updateCurrencyDisplay();
+  </script>
+</body>
+</html>

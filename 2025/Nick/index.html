@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Platformer with Level Editor</title>
+  <style>
+    body { margin: 0; background: #111; font-family: sans-serif; color: #eee; }
+    canvas { display: block; margin: 0 auto; background: #222; border: 2px solid #333; }
+    #editorUI {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #000a;
+      padding: 10px;
+      display: none;
+      z-index: 10;
+    }
+    select, button { margin-top: 5px; }
+
+    /* === CONTEXT MENU === */
+    #contextMenu {
+      position: fixed;
+      display: none;
+      background: #333;
+      color: #fff;
+      border: 1px solid #666;
+      padding: 5px;
+      z-index: 20;
+    }
+    #contextMenu div {
+      padding: 5px;
+      cursor: pointer;
+    }
+    #contextMenu div:hover {
+      background: #555;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="800" height="480"></canvas>
+
+  <div id="editorUI">
+    <label for="objectType">Object Type:</label>
+    <select id="objectType">
+      <option value="platform">Platform</option>
+      <option value="hazard">Hazard</option>
+      <option value="wall">Wall Jump Wall</option>
+    </select><br>
+    <button id="saveLevel">Save Level</button><br>
+    <button id="addRoomLeft">Add Room Left</button>
+    <button id="addRoomRight">Add Room Right</button>
+  </div>
+
+  <div id="contextMenu">
+    <div id="resizeItem">Resize</div>
+    <div id="deleteItem">Delete</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const editorUI = document.getElementById('editorUI');
+    const objectType = document.getElementById('objectType');
+    const contextMenu = document.getElementById('contextMenu');
+    let selectedObject = null;
+
+    let inEditor = false;
+
+    const GRAVITY = 0.6, GRAVITY_FALL = 1.2, MOVE_ACC = 0.5, MOVE_DEC = 0.4;
+    const MAX_RUN_SPEED = 4.5, JUMP_VELOCITY = -13, COYOTE_TIME = 0.12 * 60, JUMP_BUFFER_TIME = 0.12 * 60;
+
+    let keys = {};
+    document.addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key === '\\') toggleEditor();
+      if (e.key.toLowerCase() === 'j' && !hero.attacking) {
+        hero.attacking = true;
+        hero.attackTimer = 10;
+      }
+    });
+    document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    const hero = {
+      x: 50, y: 300,
+      width: 32,   // Changed from 40
+      height: 48,  // Changed from 60 (this will make him slightly shorter than before)
+      vx: 0, vy: 0, grounded: false,
+      coyoteTimer: 0, jumpBufferTimer: 0,
+      onWallLeft: false, onWallRight: false,
+      attackTimer: 0, attacking: false,
+      facingRight: true,
+
+      // New sprite animation properties
+      spriteSheet: new Image(),
+      spriteWidth: 32,
+      spriteHeight: 32,
+      currentFrame: 0,
+      animationTimer: 0,
+      animationSpeed: 8, // Frames per update (lower for faster animation)
+      animationState: 'idle' // 'idle', 'run', 'jump', 'fall', 'attack'
+    };
+
+    // Define the animation frames. Each entry specifies:
+    //   - row: The row index (0-based) on the sprite sheet.
+    //   - frames: The number of frames for this animation.
+    //   - startCol: The starting column index (0-based) for this animation on its row.
+    const animations = {
+        idle: { row: 0, frames: 4, startCol: 0 },
+        run: { row: 1, frames: 8, startCol: 0 },
+        jump: { row: 2, frames: 4, startCol: 0 }, // For the ascent
+        fall: { row: 3, frames: 4, startCol: 0 }, // For the descent
+        attack: { row: 4, frames: 4, startCol: 0 } // Adjust frames if needed for the attack
+    };
+
+    // Load the sprite sheet
+    hero.spriteSheet.src = 'AnimationSheet_Character (1).png';
+    hero.spriteSheet.onload = () => {
+        console.log('Sprite sheet loaded!');
+        // You might want to delay gameLoop() start here if it needs to wait
+    };
+
+
+    const spawnPoint = { x: 50, y: 300 };
+
+    let currentRoom = 0;
+    let platforms = [], hazards = [], wallJumpWalls = [];
+    const rooms = [
+      { platforms: [], hazards: [], wallJumpWalls: [] }
+    ];
+
+    function loadRoom(index) {
+      if (index < 0 || index >= rooms.length) return;
+      currentRoom = index;
+      platforms = rooms[index].platforms.map(p => ({ ...p }));
+      hazards = rooms[index].hazards.map(h => ({ ...h }));
+      wallJumpWalls = rooms[index].wallJumpWalls.map(w => ({ ...w }));
+      hero.x = spawnPoint.x;
+      hero.y = spawnPoint.y;
+      hero.vx = hero.vy = 0;
+    }
+
+    function rectsCollide(a, b) {
+      return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+
+    function resolveCollisions() {
+      hero.grounded = false;
+      for (let plat of platforms) {
+        if (rectsCollide(hero, plat)) {
+          if (hero.vy > 0 && hero.y + hero.height - hero.vy <= plat.y) {
+            hero.y = plat.y - hero.height;
+            hero.vy = 0;
+            hero.grounded = true;
+            hero.coyoteTimer = COYOTE_TIME;
+          } else if (hero.vy < 0 && hero.y >= plat.y + plat.height) {
+            hero.y = plat.y + plat.height;
+            hero.vy = 0;
+          }
+        }
+      }
+      for (let wall of wallJumpWalls) {
+        if (rectsCollide(hero, wall)) {
+          if (hero.vx > 0 && hero.x + hero.width - hero.vx <= wall.x) {
+            hero.x = wall.x - hero.width;
+            hero.vx = 0;
+          } else if (hero.vx < 0 && hero.x - hero.vx >= wall.x + wall.width) {
+            hero.x = wall.x + wall.width;
+            hero.vx = 0;
+          }
+        }
+      }
+    }
+
+    function checkHazards() {
+      for (let hz of hazards) {
+        if (rectsCollide(hero, hz)) {
+          hero.x = spawnPoint.x;
+          hero.y = spawnPoint.y;
+          hero.vx = hero.vy = 0;
+        }
+      }
+    }
+
+    function updateWallContact() {
+      hero.onWallLeft = hero.onWallRight = false;
+      for (let wall of wallJumpWalls) {
+        // Create temporary hero collision box for wall check
+        const heroLeftCheck = { x: hero.x - 1, y: hero.y, width: 1, height: hero.height };
+        const heroRightCheck = { x: hero.x + hero.width, y: hero.y, width: 1, height: hero.height };
+
+        if (rectsCollide(heroLeftCheck, wall)) hero.onWallLeft = true;
+        if (rectsCollide(heroRightCheck, wall)) hero.onWallRight = true;
+      }
+    }
+
+    function update() {
+      if (inEditor) return;
+
+      // Room switching logic
+      if (hero.x + hero.width < 0) {
+        if (currentRoom > 0) {
+          saveCurrentRoom();
+          loadRoom(currentRoom - 1);
+          hero.x = canvas.width - hero.width - 1;
+        } else {
+          hero.x = 0;
+          hero.vx = 0;
+        }
+      } else if (hero.x > canvas.width) {
+        if (currentRoom < rooms.length - 1) {
+          saveCurrentRoom();
+          loadRoom(currentRoom + 1);
+          hero.x = 1;
+        } else {
+          hero.x = canvas.width - hero.width;
+          hero.vx = 0;
+        }
+      }
+
+      updateWallContact();
+      hero.coyoteTimer = hero.grounded ? COYOTE_TIME : hero.coyoteTimer - 1;
+      if (keys[' '] || keys['w']) hero.jumpBufferTimer = JUMP_BUFFER_TIME;
+      else hero.jumpBufferTimer = Math.max(0, hero.jumpBufferTimer - 1); // Decrease jump buffer if not pressing
+
+      if (keys['a']) {
+        hero.vx -= MOVE_ACC;
+        hero.facingRight = false;
+      } else if (keys['d']) {
+        hero.vx += MOVE_ACC;
+        hero.facingRight = true;
+      } else {
+        hero.vx *= 0.9;
+      }
+      hero.vx = Math.max(Math.min(hero.vx, MAX_RUN_SPEED), -MAX_RUN_SPEED);
+
+      if (hero.jumpBufferTimer > 0) {
+        if (hero.grounded || hero.coyoteTimer > 0) {
+          hero.vy = JUMP_VELOCITY; hero.jumpBufferTimer = 0;
+        } else if (hero.onWallLeft || hero.onWallRight) {
+          hero.vy = JUMP_VELOCITY;
+          hero.vx = hero.onWallLeft ? 4 : -4; // Push off wall
+          hero.jumpBufferTimer = 0;
+        }
+      }
+
+      if (!hero.grounded && (hero.onWallLeft || hero.onWallRight) && hero.vy > 2) hero.vy = 2; // Wall slide
+      hero.vy += (hero.vy < 0 && !(keys[' '] || keys['w'])) ? GRAVITY_FALL : GRAVITY;
+
+      hero.x += hero.vx;
+      hero.y += hero.vy;
+
+      resolveCollisions();
+      checkHazards();
+
+      if (hero.y + hero.height > canvas.height) {
+        hero.y = canvas.height - hero.height;
+        hero.vy = 0;
+        hero.grounded = true;
+      }
+
+      // Hero Animation State Logic
+      if (hero.attacking) {
+          hero.attackTimer--;
+          if (hero.attackTimer <= 0) hero.attacking = false;
+          hero.animationState = 'attack';
+      } else if (!hero.grounded) {
+          if (hero.vy < 0) { // Jumping up
+              hero.animationState = 'jump';
+          } else { // Falling down
+              hero.animationState = 'fall';
+          }
+      } else { // Grounded
+          if (Math.abs(hero.vx) > 0.5) { // Check if moving significantly
+              hero.animationState = 'run';
+          } else { // Not moving, grounded
+              hero.animationState = 'idle';
+          }
+      }
+
+      // Animation frame progression
+      hero.animationTimer++;
+      const currentAnim = animations[hero.animationState];
+      if (currentAnim) {
+          if (hero.animationTimer >= hero.animationSpeed) {
+              hero.animationTimer = 0;
+              hero.currentFrame = (hero.currentFrame + 1) % currentAnim.frames;
+          }
+      } else {
+          hero.currentFrame = 0; // Reset frame if state is unknown
+          hero.animationTimer = 0;
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw hero sprite
+      if (hero.spriteSheet.complete && hero.spriteSheet.naturalWidth > 0) {
+          const anim = animations[hero.animationState];
+          if (anim) {
+              // Calculate source X and Y on the sprite sheet
+              const sx = (anim.startCol + hero.currentFrame) * hero.spriteWidth;
+              const sy = anim.row * hero.spriteHeight;
+
+              // Save the context state before flipping
+              ctx.save();
+
+              // Flip the sprite if facing left
+              if (!hero.facingRight) {
+                  // Translate to the center of the hero's collision box horizontally
+                  // This is crucial for flipping around the character's axis
+                  ctx.translate(hero.x + hero.width / 2, 0);
+                  ctx.scale(-1, 1); // Flip horizontally
+
+                  // Draw the image. The x-coordinate needs to be negative,
+                  // relative to the translated origin, to appear at the hero's position.
+                  // (hero.x + hero.width / 2) is the center point, so we want the left
+                  // edge of the sprite to be (center - width/2), which becomes -(center - width/2)
+                  // when flipped. Simplified to -(hero.x + hero.width / 2) because the sprite
+                  // drawing also centers itself relative to the origin.
+                  ctx.drawImage(
+                      hero.spriteSheet,
+                      sx, sy, hero.spriteWidth, hero.spriteHeight,
+                      -(hero.x + hero.width / 2), hero.y, // Adjusted x-coordinate
+                      hero.width, hero.height // Destination width and height (scaled to hero's collision box)
+                  );
+              } else {
+                  // Draw without flipping
+                  ctx.drawImage(
+                      hero.spriteSheet,
+                      sx, sy, hero.spriteWidth, hero.spriteHeight,
+                      hero.x, hero.y,
+                      hero.width, hero.height
+                  );
+              }
+              ctx.restore(); // Restore context to original (un-flipped) state
+          } else {
+              // Fallback: Draw a debug rectangle if animation state is invalid
+              ctx.fillStyle = '#ff5555';
+              ctx.fillRect(hero.x, hero.y, hero.width, hero.height);
+              console.warn("Unknown animation state:", hero.animationState);
+          }
+      } else {
+          // Draw a fallback rectangle if sprite sheet hasn't loaded yet
+          ctx.fillStyle = '#ff5555';
+          ctx.fillRect(hero.x, hero.y, hero.width, hero.height);
+      }
+
+      // Draw hero's attack (you can replace this with attack sprites later)
+      if (hero.attacking) {
+          ctx.strokeStyle = 'yellow';
+          ctx.lineWidth = 4;
+          const attackX = hero.facingRight ? (hero.x + hero.width + 5) : (hero.x - 5);
+          ctx.beginPath();
+          ctx.moveTo(attackX, hero.y + hero.height / 4);
+          ctx.lineTo(attackX, hero.y + hero.height * 3 / 4);
+          ctx.stroke();
+      }
+
+      // Draw platforms
+      ctx.fillStyle = '#999';
+      platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+
+      // Draw hazards
+      ctx.fillStyle = '#c22';
+      hazards.forEach(h => ctx.fillRect(h.x, h.y, h.width, h.height));
+
+      // Draw wall jump walls
+      ctx.fillStyle = '#6cf';
+      wallJumpWalls.forEach(w => ctx.fillRect(w.x, w.y, w.width, w.height));
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function toggleEditor() {
+      inEditor = !inEditor;
+      editorUI.style.display = inEditor ? 'block' : 'none';
+      // Clear selection and hide context menu on editor toggle
+      selectedObject = null;
+      contextMenu.style.display = 'none';
+    }
+
+    function saveCurrentRoom() {
+      rooms[currentRoom] = {
+        platforms: platforms.map(p => ({ ...p })),
+        hazards: hazards.map(h => ({ ...h })),
+        wallJumpWalls: wallJumpWalls.map(w => ({ ...w })),
+      };
+    }
+
+    canvas.addEventListener('click', e => {
+      if (!inEditor) return;
+      if (e.button !== 0) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const obj = { x: Math.floor(x / 20) * 20, y: Math.floor(y / 20) * 20, width: 60, height: 20 };
+      if (objectType.value === 'platform') platforms.push(obj);
+      else if (objectType.value === 'hazard') hazards.push(obj);
+      else if (objectType.value === 'wall') wallJumpWalls.push(obj);
+    });
+
+    canvas.addEventListener('contextmenu', e => {
+      if (!inEditor) return;
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      function findClicked(objects) {
+        return objects.find(o => x >= o.x && x <= o.x + o.width && y >= o.y && y <= o.y + o.height);
+      }
+
+      const objLists = [platforms, hazards, wallJumpWalls];
+      for (let list of objLists) {
+        const found = findClicked(list);
+        if (found) {
+          selectedObject = { obj: found, list };
+          contextMenu.style.left = e.pageX + 'px';
+          contextMenu.style.top = e.pageY + 'px';
+          contextMenu.style.display = 'block';
+          return;
+        }
+      }
+
+      selectedObject = null;
+      contextMenu.style.display = 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      // Prevent closing context menu if clicking inside it
+      if (contextMenu.style.display === 'block') {
+        if (!contextMenu.contains(e.target)) {
+          contextMenu.style.display = 'none';
+          selectedObject = null;
+        }
+      }
+    });
+
+    document.getElementById('resizeItem').onclick = () => {
+      if (!selectedObject) return;
+      const width = parseInt(prompt("New width:", selectedObject.obj.width));
+      const height = parseInt(prompt("New height:", selectedObject.obj.height));
+      if (!isNaN(width) && !isNaN(height)) {
+        selectedObject.obj.width = width;
+        selectedObject.obj.height = height;
+      }
+      contextMenu.style.display = 'none';
+      selectedObject = null;
+    };
+
+    document.getElementById('deleteItem').onclick = () => {
+      if (!selectedObject) return;
+      const index = selectedObject.list.indexOf(selectedObject.obj);
+      if (index !== -1) selectedObject.list.splice(index, 1);
+      selectedObject = null;
+      contextMenu.style.display = 'none';
+    };
+
+    document.getElementById('saveLevel').onclick = () => {
+      saveCurrentRoom();
+      const data = JSON.stringify(rooms, null, 2);
+      const a = document.createElement('a');
+      a.href = 'data:text/json;charset=utf-8,' + encodeURIComponent(data);
+      a.download = 'levelData.json';
+      a.click();
+    };
+
+    document.getElementById('addRoomLeft').onclick = () => {
+      saveCurrentRoom();
+      rooms.splice(currentRoom, 0, { platforms: [], hazards: [], wallJumpWalls: [] });
+      loadRoom(currentRoom);
+    };
+
+    document.getElementById('addRoomRight').onclick = () => {
+      saveCurrentRoom();
+      rooms.splice(currentRoom + 1, 0, { platforms: [], hazards: [], wallJumpWalls: [] });
+      loadRoom(currentRoom + 1);
+    };
+
+    loadRoom(0);
+    gameLoop();
+  </script>
+</body>
+</html>

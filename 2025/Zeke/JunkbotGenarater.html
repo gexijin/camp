@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Random Creature Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Press Start 2P', cursive;
+      background-color: #000;
+      color: #00FF00;
+      padding: 2rem;
+    }
+    h1 {
+      color: #00FF00;
+    }
+    .part {
+      margin: 0.5rem 0;
+    }
+    button {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      background-color: #002200;
+      color: #00FF00;
+      border: 2px solid #00FF00;
+      cursor: pointer;
+      font-family: 'Press Start 2P', cursive;
+    }
+    button:hover {
+      background-color: #004400;
+    }
+  </style>
+</head>
+<body>
+  <h1>Random Creature Generator</h1>
+  <div class="part" id="body"></div>
+  <div class="part" id="head"></div>
+  <div class="part" id="arms"></div>
+  <div class="part" id="hands"></div>
+  <div class="part" id="legs"></div>
+  <div class="part" id="flavor"></div>
+  <button onclick="generateCreature()">Generate New Creature</button>
+
+  <script>
+    const SIZE = 20;
+    const bodies = [
+      "Belly Full", "Missing Parts", "Skewered", "Should It be Leaking",
+      "Brick Sh*tHouse","RustGod", "Heavy Smoker", "Big Boned", "BeanPole",
+      "Alian","Riveting!!!", "Too Many Wires", "Giger", "Seen Beter Days", "Carapaced",
+      "All Chrome & Shiny", "Spikes", "All Dressed Up", "Speed Holes", "Death"
+    ];
+    const heads = [
+      "Lock Jaw", "3x3 Eyes", "Cute N Round", "Goooogly", "Hole",
+      "Grinder", "It Dosent Look Right?", "Mandables", "Cyclopian", "Fishbowl", "He Looks Dangerous",
+      "Sees All", "Broken", "Looking Good", "Spikey", "Baaaad Breath!",
+      "HOT!!!","Scary","Bones","God Like"
+    ];
+    const arms = [
+      "Beeeefy", "Hydraulic", "Extras!!!", "Probably Too Long", "Stubby",
+      "Noodle", "One Armed Bandit", "KnuckleDragger", "Mr Tickle", "Double Jointed",
+      "Too Many", "Triple Jointed", "Fancy Pants", "Pistons", "Long+Thin",
+      "ARMoured!!!", "Miss Matched", "Spider-Like", "Wired", "War Machine!"
+    ];
+    const hands = [
+      "Hands Are Hard", "Claws Are Easy", "Buzzzzzzzzz", "Take an Eye out with that", "KaBoom!",
+      "Grip", "Barbed", "Up Yours", "What a Knockout", "BIGGUN",
+      "Scorcher", "Electric", "Hook", "Two Handed", "Buster",
+      "Calamari", "Knuckles", "Creepy", "Old Witch Hands", "Guns"
+    ];
+    const legs = [
+      "Nice Pins", "Leg Day", "Spidey", "Tanks Tracks", "Ballerina",
+      "Quadropod", "Tri-Pod", "Who Needs Legs?", "Centaur", "Sticks",
+      "Dash", "Stumpy", "They Call Me Wheels", "Centipede", "Bones",
+      "Weak", "Pistons", "Daddy Long", "Triple Jointed", "BackWards"
+    ];
+    const flavors = [
+      "Rusty", "Polished", "Ronin", "Beaten", "Mouldy",
+      "Savage", "Holy", "Evil", "Too Many Spikes", "Jagged",
+      "Soft", "Sleek", "Unlucky", "Dirty", "Cosmic",
+      "Weirdo", "Cutey", "Asymetrical", "KillingMachine!!", "Is That Meat!?!"
+    ];
+
+    function getRandomPart(array) {
+      return array[Math.floor(Math.random() * SIZE)];
+    }
+
+    function generateCreature() {
+      document.getElementById("body").textContent = "Body: " + getRandomPart(bodies);
+      document.getElementById("head").textContent = "Head: " + getRandomPart(heads);
+      document.getElementById("arms").textContent = "Arms: " + getRandomPart(arms);
+      document.getElementById("hands").textContent = "Hands: " + getRandomPart(hands);
+      document.getElementById("legs").textContent = "Legs: " + getRandomPart(legs);
+      document.getElementById("flavor").textContent = "Flavor: " + getRandomPart(flavors);
+    }
+
+    // Initial generation
+    generateCreature();
+  </script>
+</body>
+</html>

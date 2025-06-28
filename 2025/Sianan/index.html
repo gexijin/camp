@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WX Analysis and Prediction</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #003366;
+      color: white;
+      padding: 20px;
+      position: relative;
+    }
+    header h1 {
+      margin: 0;
+      text-align: center;
+      font-size: 1.8em;
+    }
+    #location-display {
+      position: absolute;
+      top: 10px;
+      left: 20px;
+      font-size: 0.9em;
+    }
+    #location-time {
+      text-align: center;
+      font-size: 1em;
+      padding: 10px;
+      color: #333;
+    }
+    nav {
+      background-color: #dce3ea;
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+    }
+    nav button {
+      background: #e7ecf1;
+      border: none;
+      padding: 10px 20px;
+      margin: 0 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    nav button.active {
+      background-color: #cccccc;
+    }
+    .tab {
+      display: none;
+      padding: 20px;
+      max-width: 900px;
+      margin: auto;
+    }
+    .tab.visible {
+      display: block;
+    }
+    .results {
+      background: #ffffff;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 15px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+    button.estimate {
+      background-color: #003366;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .compass {
+      width: 100px;
+      height: 100px;
+      border: 3px solid #003366;
+      border-radius: 50%;
+      margin: 20px auto;
+      position: relative;
+    }
+    .compass .arrow {
+      width: 2px;
+      height: 50px;
+      background-color: red;
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform-origin: bottom;
+    }
+    h2 {
+      text-align: center;
+      color: #003366;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>WX Analysis and Prediction</h1>
+  <div id="location-display">Getting location...</div>
+</header>
+<div id="location-time">Loading time and location...</div>
+
+<nav>
+  <button onclick="showTab(event, 'experimental')" class="active">Experimental</button>
+  <button onclick="showTab(event, 'spc1')">SPC Day 1</button>
+  <button onclick="showTab(event, 'spc2')">SPC Day 2</button>
+  <button onclick="showTab(event, 'spc3')">SPC Day 3</button>
+</nav>
+
+<div id="experimental" class="tab visible">
+  <h2>Thermodynamic Estimator</h2>
+  <label for="cape">CAPE (J/kg):</label>
+  <input type="number" id="cape" placeholder="e.g. 2500" />
+  <label for="srh">SRH (m²/s²):</label>
+  <input type="number" id="srh" placeholder="e.g. 150" />
+  <label for="temp">Temperature (°F):</label>
+  <input type="number" id="temp" placeholder="e.g. 82" />
+  <label for="dewpoint">Dewpoint (°F):</label>
+  <input type="number" id="dewpoint" placeholder="e.g. 65" />
+  <label for="pwatt">PWAT (inches):</label>
+  <input type="number" step="0.01" id="pwatt" placeholder="e.g. 1.2" />
+  <label for="cinh">CINH:</label>
+  <input type="number" id="cinh" placeholder="e.g. 50" />
+  <label for="direction">Storm Motion Direction (degrees):</label>
+  <input type="number" id="direction" placeholder="e.g. 270" />
+  <button class="estimate" onclick="estimateRisk()">Estimate Risk</button>
+  <div class="results" id="results"></div>
+  <div class="compass">
+    <div class="arrow" id="arrow"></div>
+  </div>
+</div>
+
+<!-- SPC Sections with refreshing logic -->
+<div id="spc1" class="tab">
+  <h2>SPC Day 1</h2>
+  <div id="spc1-timer" class="results"></div>
+  <img id="spc1-img" data-src="https://www.spc.noaa.gov/products/outlook/day1otlk.gif" src="" style="width:100%;" alt="SPC Day 1 Outlook">
+</div>
+<div id="spc2" class="tab">
+  <h2>SPC Day 2</h2>
+  <div id="spc2-timer" class="results"></div>
+  <img id="spc2-img" data-src="https://www.spc.noaa.gov/products/outlook/day2otlk.gif" src="" style="width:100%;" alt="SPC Day 2 Outlook">
+</div>
+<div id="spc3" class="tab">
+  <h2>SPC Day 3</h2>
+  <div id="spc3-timer" class="results"></div>
+  <img id="spc3-img" data-src="https://www.spc.noaa.gov/products/outlook/day3otlk.gif" src="" style="width:100%;" alt="SPC Day 3 Outlook">
+</div>
+
+<script>
+  function showTab(event, tabId) {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('visible'));
+    document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(tabId).classList.add('visible');
+    event.target.classList.add('active');
+  }
+
+  function updateSPCTimer() {
+    const now = new Date();
+    let nextUpdate = new Date();
+    nextUpdate.setUTCHours(13, 0, 0, 0);
+    if (now > nextUpdate) nextUpdate.setUTCDate(nextUpdate.getUTCDate() + 1);
+    const diff = Math.floor((nextUpdate - now) / 1000);
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    const message = `Time Until Next SPC Update: ${h}h ${m}m ${s}s`;
+    document.getElementById("spc1-timer").innerText = message;
+    document.getElementById("spc2-timer").innerText = message;
+    document.getElementById("spc3-timer").innerText = message;
+    document.getElementById("location-time").textContent = `Local Time: ${now.toLocaleString()}`;
+  }
+
+  function reloadSPCImages() {
+    ['spc1-img', 'spc2-img', 'spc3-img'].forEach(id => {
+      const img = document.getElementById(id);
+      if (img && img.dataset.src) {
+        img.src = img.dataset.src + '?t=' + new Date().getTime();
+      }
+    });
+  }
+
+  function getLocationLatLonOnly() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      const lat = pos.coords.latitude.toFixed(2);
+      const lon = pos.coords.longitude.toFixed(2);
+      document.getElementById("location-display").textContent = `Lat: ${lat}, Lon: ${lon}`;
+    }, () => {
+      document.getElementById("location-display").textContent = "Location access denied.";
+    });
+  }
+
+  window.estimateRisk = function () {
+    const cape = +document.getElementById('cape').value || 0;
+    const srh = +document.getElementById('srh').value || 0;
+    const temp = +document.getElementById('temp').value || 0;
+    const dewpoint = +document.getElementById('dewpoint').value || 0;
+    const pwatt = +document.getElementById('pwatt').value || 0;
+    const cinh = +document.getElementById('cinh').value || 0;
+    const direction = +document.getElementById('direction').value || 0;
+
+    let score = 0;
+    if (temp < 50) score = 0;
+    else {
+      if (cape > 1000) score += 1;
+      if (cape > 2000) score += 2;
+      if (cape > 3500) score += 3;
+      if (srh > 100) score += 1;
+      if (srh > 200) score += 2;
+      if (temp > 75) score += 1;
+      if (dewpoint > 55) score += 1;
+      if (pwatt > 0.75) score += 1;
+      if (pwatt > 1.25) score += 1;
+      if (cinh < 100) score += 1;
+      if (cinh < 50) score += 1;
+      if (cinh === 0) score += 1;
+    }
+    if (cinh > 250 || pwatt < 0.3) score = 0;
+
+    let risk = "NONE";
+    if (score >= 12) risk = "HIGH";
+    else if (score >= 10) risk = "MDT";
+    else if (score >= 8) risk = "ENH";
+    else if (score >= 6) risk = "SLGT";
+    else if (score >= 4) risk = "MRGNL";
+    else if (score >= 2) risk = "TSTM";
+
+    const coverage = cinh > 100 ? "Low storm coverage due to strong cap." : "Scattered to widespread storms possible.";
+    const hail = cape > 3500 ? ">=2\"" : cape > 2000 ? "1-2\"" : cape > 1000 ? "<1\"" : "Minimal";
+    const tornado = srh > 200 ? "EF2+ (~111+ mph)" : srh > 100 ? "EF0-EF1 (65-110 mph)" : "Low chance";
+
+    let wind = "<40 mph";
+    if (temp > 95) wind = "80-100+ mph";
+    else if (temp > 85) wind = "60-80 mph";
+    else if (temp > 70) wind = "40-60 mph";
+
+    const precip = temp < 32 ? "Snow" :
+                   temp < 35 ? "Sleet" :
+                   temp < 38 && pwatt > 0.75 ? "Wintery Mix" :
+                   cinh > 200 ? "None" :
+                   pwatt > 1.5 ? "Heavy Rain" :
+                   pwatt > 1.0 ? "Rain" :
+                   pwatt > 0.6 ? "Mist" : "None";
+
+    let advice = "";
+    if (risk === "HIGH") advice += "High risk of severe weather. Stay alert and have a shelter plan.";
+    else if (risk === "MDT") advice += "Moderate risk: Monitor forecasts closely.";
+    else if (risk === "ENH") advice += "Enhanced risk: Strong storms possible, stay aware.";
+    else if (risk === "SLGT") advice += "Slight risk: Some strong storms possible.";
+    else if (risk === "MRGNL") advice += "Marginal risk: Isolated storms expected.";
+    else advice += "No significant threat expected.";
+
+    if (temp > 90 && dewpoint > 70) advice += " High heat and humidity may enhance storm strength.";
+    if (cape > 3000 && cinh < 50) advice += " Explosive development possible due to high instability.";
+    if (srh > 150 && dewpoint > 60) advice += " Low-level shear and moisture may increase tornado risk.";
+
+    document.getElementById("results").innerHTML = `
+      <strong>Estimated SPC Risk:</strong> ${risk}<br>
+      <strong>Storm Coverage:</strong> ${coverage}<br>
+      <strong>Most Probable Precip Type:</strong> ${precip}<br>
+      <strong>Hail Size (inches):</strong> ${hail}<br>
+      <strong>Tornado Intensity:</strong> ${tornado}<br>
+      <strong>Wind Gusts:</strong> ${wind}<br>
+      <strong>Advice:</strong> ${advice}
+    `;
+
+    document.getElementById("arrow").style.transform = `rotate(${direction}deg)`;
+  };
+
+  getLocationLatLonOnly();
+  reloadSPCImages(); // Initial SPC image load
+  setInterval(updateSPCTimer, 1000); // Update timers every second
+  setInterval(reloadSPCImages, 5 * 60 * 1000); // Reload images every 5 minutes
+</script>
+</body>
+</html>

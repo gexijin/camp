@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Space Invaders Ultra Deluxe</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+    }
+    #scoreboard {
+      display: flex;
+      justify-content: space-around;
+      font-size: 20px;
+      padding: 10px;
+    }
+    #controls {
+      display: flex;
+      justify-content: space-around;
+      padding: 10px;
+    }
+    #gameArea {
+      display: inline-block;
+      text-align: center;
+      margin: 0 auto;
+    }
+    canvas {
+      background: #000;
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #fff;
+    }
+    #restartBtn {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    #gameContainer {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 20px;
+      margin: 0 auto;
+      max-width: 900px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Two Player Space Invaders</h1>
+  <h2>Session High Score: <span id="highScore">0</span></h2>
+  <div id="scoreboard">
+    <div>
+      Player 1 Score: <span id="score1">0</span> | Hearts: <span id="hearts1">❤❤❤</span>
+    </div>
+    <div>
+      Player 2 Score: <span id="score2">0</span> | Hearts: <span id="hearts2">❤❤❤</span>
+    </div>
+    <div>
+      Level: <span id="level">1</span>
+    </div>
+  </div>
+  <div id="gameContainer">
+    </div>
+    <div id="gameArea">
+      <canvas id="gameCanvas" width="800" height="600"></canvas>
+      <button id="restartBtn">Restart Game</button>
+    </div>
+  <div id="controls">
+    <div>
+      <label for="color1">Player 1 Color:</label>
+      <input type="color" id="color1" value="#00ffff">
+    </div>
+    <div>
+      <label for="color2">Player 2 Color:</label>
+      <input type="color" id="color2" value="#00ff00">
+    </div>
+  </div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const WIDTH = canvas.width;
+const HEIGHT = canvas.height;
+
+let highScore = 0;
+let level = 1;
+let shootInterval;
+let stars = [];
+let invaders = [], invaderBullets = [];
+
+let player1, player2;
+let invaderDirection = 1;
+let gameOver = false;
+let paused = false;
+
+const restartBtn = document.getElementById("restartBtn");
+
+const score1El = document.getElementById("score1");
+const score2El = document.getElementById("score2");
+const hearts1El = document.getElementById("hearts1");
+const hearts2El = document.getElementById("hearts2");
+const levelEl = document.getElementById("level");
+const highScoreEl = document.getElementById("highScore");
+const color1El = document.getElementById("color1");
+const color2El = document.getElementById("color2");
+
+restartBtn.onclick = () => initGame();
+
+function initGame() {
+  player1 = { x: WIDTH / 4, y: HEIGHT - 40, size: 20, color: color1El.value, left: false, right: false, bullets: [], score: 0, health: 6, alive: true };
+  player2 = { x: WIDTH * 3 / 4, y: HEIGHT - 40, size: 20, color: color2El.value, left: false, right: false, bullets: [], score: 0, health: 6, alive: true };
+  invaders = [];
+  invaderBullets = [];
+  level = 1;
+  levelEl.textContent = level;
+  gameOver = false;
+  paused = false;
+  restartBtn.style.display = "none";
+  createStars();
+  createInvaders();
+  updateScoreboard();
+  clearInterval(shootInterval);
+  shootInterval = setInterval(shootFromInvaders, 2000);
+  requestAnimationFrame(gameLoop);
+}
+
+function createStars() {
+  stars = [];
+  for (let i = 0; i < 200; i++) {
+    stars.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT });
+  }
+}
+
+function createInvaders() {
+  invaders = [];
+  let colors = ["red", "orange", "yellow", "green", "cyan", "blue", "magenta", "pink", "white", "gray"];
+  let shapes = ["rect", "circle"];
+  let color = colors[(level - 1) % colors.length];
+  let shape = shapes[(level - 1) % shapes.length];
+
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 10; col++) {
+      invaders.push({ x: 80 + col * 60, y: 40 + row * 40, width: 30, height: 20, alive: true, color, shape });
+    }
+  }
+}
+
+function shoot(player) {
+  if (!player.alive) return;
+  player.bullets.push({ x: player.x, y: player.y - player.size, vy: -5 });
+}
+
+function shootFromInvaders() {
+  if (paused || gameOver) return;
+
+  const aliveInvaders = invaders.filter(inv => inv.alive);
+  const maxShooters = Math.min(10, aliveInvaders.length);
+
+  // Shuffle aliveInvaders array (Fisher-Yates shuffle)
+  for (let i = aliveInvaders.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [aliveInvaders[i], aliveInvaders[j]] = [aliveInvaders[j], aliveInvaders[i]];
+  }
+
+  const shooters = aliveInvaders.slice(0, maxShooters);
+
+  shooters.forEach(inv => {
+    invaderBullets.push({ x: inv.x + inv.width / 2, y: inv.y + inv.height, vy: 3 + level * 0.3 });
+  });
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "a") player1.left = true;
+  if (e.key === "d") player1.right = true;
+  if (e.key === "w") shoot(player1);
+  if (e.key === "ArrowLeft") player2.left = true;
+  if (e.key === "ArrowRight") player2.right = true;
+  if (e.key === "ArrowUp") shoot(player2);
+  if (e.code === "Space") paused = !paused;
+});
+
+document.addEventListener("keyup", e => {
+  if (e.key === "a") player1.left = false;
+  if (e.key === "d") player1.right = false;
+  if (e.key === "ArrowLeft") player2.left = false;
+  if (e.key === "ArrowRight") player2.right = false;
+});
+
+function update() {
+  if (gameOver || paused) return;
+
+  [player1, player2].forEach(p => {
+    if (!p.alive) return;
+    if (p.left) p.x -= 4;
+    if (p.right) p.x += 4;
+    p.x = Math.max(p.size, Math.min(WIDTH - p.size, p.x));
+    p.bullets.forEach(b => b.y += b.vy);
+    p.bullets = p.bullets.filter(b => b.y > 0);
+  });
+
+  invaderBullets.forEach(b => b.y += b.vy);
+  invaderBullets = invaderBullets.filter(b => b.y < HEIGHT);
+
+  let edgeReached = false;
+  invaders.forEach(inv => {
+    if (!inv.alive) return;
+    inv.x += invaderDirection * (1 + level * 0.5);
+    if (inv.x < 0 || inv.x + inv.width > WIDTH) edgeReached = true;
+  });
+
+  if (edgeReached) {
+    invaderDirection *= -1;
+    invaders.forEach(inv => inv.y += 10);
+  }
+
+  for (const inv of invaders) {
+    if (inv.alive && inv.y + inv.height >= HEIGHT - 40) {
+      gameOver = true;
+      restartBtn.style.display = "block";
+      highScore = Math.max(highScore, player1.score + player2.score);
+      highScoreEl.textContent = highScore;
+      return;
+    }
+  }
+
+  [player1, player2].forEach(player => {
+    if (!player.alive) return;
+    player.bullets.forEach(bullet => {
+      invaders.forEach(inv => {
+        if (!inv.alive) return;
+        if (bullet.x > inv.x && bullet.x < inv.x + inv.width &&
+            bullet.y > inv.y && bullet.y < inv.y + inv.height) {
+          inv.alive = false;
+          bullet.y = -10;
+          player.score++;
+          updateScoreboard();
+        }
+      });
+    });
+  });
+
+  invaderBullets.forEach(b => {
+    [player1, player2].forEach(p => {
+      if (!p.alive) return;
+      if (b.x > p.x - p.size && b.x < p.x + p.size &&
+          b.y > p.y - p.size && b.y < p.y + p.size) {
+        p.health = Math.max(0, p.health - 1);
+        b.y = HEIGHT + 10;
+        if (p.health === 0) p.alive = false;
+        updateScoreboard();
+      }
+    });
+  });
+
+  if (!player1.alive && !player2.alive) {
+    gameOver = true;
+    restartBtn.style.display = "block";
+    highScore = Math.max(highScore, player1.score + player2.score);
+    highScoreEl.textContent = highScore;
+    return;
+  }
+
+  if (invaders.every(i => !i.alive) && level < 10) {
+    level++;
+    levelEl.textContent = level;
+    createInvaders();
+    clearInterval(shootInterval);
+    shootInterval = setInterval(shootFromInvaders, Math.max(400, 2000 - level * 150));
+  }
+}
+
+function updateScoreboard() {
+  score1El.textContent = player1.score;
+  score2El.textContent = player2.score;
+  hearts1El.textContent = "❤".repeat(Math.floor(player1.health / 2)) + (player1.health % 2 ? "♥" : "");
+  hearts2El.textContent = "❤".repeat(Math.floor(player2.health / 2)) + (player2.health % 2 ? "♥" : "");
+}
+
+function drawPlayer(player) {
+  if (!player.alive) return;
+  ctx.fillStyle = player.color;
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y - player.size);
+  ctx.lineTo(player.x - player.size, player.y + player.size);
+  ctx.lineTo(player.x + player.size, player.y + player.size);
+  ctx.closePath();
+  ctx.fill();
+  player.bullets.forEach(b => ctx.fillRect(b.x - 2, b.y, 4, 10));
+}
+
+function drawInvaders() {
+  invaders.forEach(inv => {
+    if (!inv.alive) return;
+    ctx.fillStyle = inv.color;
+    if (inv.shape === "circle") {
+      ctx.beginPath();
+      ctx.arc(inv.x + inv.width / 2, inv.y + inv.height / 2, 15, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(inv.x, inv.y, inv.width, inv.height);
+    }
+  });
+  ctx.fillStyle = "orange";
+  invaderBullets.forEach(b => ctx.fillRect(b.x - 2, b.y, 4, 10));
+}
+
+function drawStars() {
+  ctx.fillStyle = "white";
+  stars.forEach(star => ctx.fillRect(star.x, star.y, 1, 1));
+}
+
+function draw() {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  drawStars();
+  drawPlayer(player1);
+  drawPlayer(player2);
+  drawInvaders();
+
+  if (paused) {
+    ctx.fillStyle = "white";
+    ctx.font = "40px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("PAUSED", WIDTH / 2, HEIGHT / 2);
+  }
+
+  if (gameOver) {
+    ctx.fillStyle = "red";
+    ctx.font = "60px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT / 2);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+initGame();
+</script>
+</body>
+</html>

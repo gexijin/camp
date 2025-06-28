@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Hitman with Sky & Nature</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: #87ceeb; /* sky */
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="900" height="600"></canvas>
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let player, bullets, enemies, keys, score, missionText, missionShown, gameRunning;
+let buildings = [];
+let cars = [];
+let clouds = [];
+let airplanes = [];
+let trees = [];
+let birds = [];
+
+function startNewGame() {
+  player = {
+    x: canvas.width / 2,
+    y: canvas.height - 120,
+    width: 40,
+    height: 100,
+    speed: 5
+  };
+
+  bullets = [];
+  enemies = [];
+  keys = {};
+  score = 0;
+  missionText = "MISSION: Eliminate targets in the city.";
+  missionShown = true;
+  gameRunning = true;
+
+  // Generate buildings once
+  buildings = [];
+  for (let i = 0; i < canvas.width; i += 80) {
+    buildings.push({
+      x: i,
+      height: 200 + Math.random() * 100
+    });
+  }
+  
+  // Create cars moving left and right
+  cars = [
+    {x: 150, y: canvas.height - 60, width: 50, height: 25, speed: 2, color: "#ff4444", dir: 1},
+    {x: 650, y: canvas.height - 50, width: 60, height: 25, speed: 3, color: "#3399ff", dir: -1},
+    {x: 400, y: canvas.height - 55, width: 55, height: 25, speed: 1.5, color: "#22cc22", dir: 1},
+  ];
+
+  // Clouds
+  clouds = [];
+  for(let i=0; i<7; i++) {
+    clouds.push({
+      x: Math.random()*canvas.width,
+      y: 50 + Math.random()*40,
+      speed: 0.4 + Math.random()*0.3,
+      size: 50 + Math.random()*30
+    });
+  }
+
+  // Airplanes
+  airplanes = [];
+  for(let i=0; i<2; i++) {
+    airplanes.push({
+      x: Math.random()*canvas.width,
+      y: 100 + Math.random()*40,
+      speed: 2 + Math.random()*1,
+      size: 50
+    });
+  }
+
+  // Trees near buildings
+  trees = [];
+  for(let i=0; i<buildings.length; i++) {
+    let b = buildings[i];
+    trees.push({
+      x: b.x + 70 + (Math.random()*20 - 10),
+      y: canvas.height - 100,
+      width: 20,
+      height: 50 + Math.random()*20
+    });
+  }
+
+  // Birds
+  birds = [];
+  for(let i=0; i<5; i++) {
+    birds.push({
+      x: Math.random()*canvas.width,
+      y: 150 + Math.random()*50,
+      speed: 1 + Math.random()*1,
+      wingUp: true,
+      wingTimer: 0
+    });
+  }
+
+  setTimeout(() => missionShown = false, 3000);
+}
+
+document.addEventListener("keydown", (e) => {
+  keys[e.key.toLowerCase()] = true;
+
+  if (e.key === " ") {
+    bullets.push({
+      x: player.x + 18,
+      y: player.y - 15,
+      width: 6,
+      height: 15,
+      speed: 9
+    });
+  }
+});
+
+document.addEventListener("keyup", (e) => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+function spawnEnemy() {
+  if (!gameRunning) return;
+  enemies.push({
+    x: Math.random() * (canvas.width - 40),
+    y: -60,
+    width: 40,
+    height: 100,
+    speed: 2.5
+  });
+}
+
+function update() {
+  if (!gameRunning) return;
+
+  if (keys["w"] && player.y > 0) player.y -= player.speed;
+  if (keys["s"] && player.y + player.height < canvas.height) player.y += player.speed;
+  if (keys["a"] && player.x > 0) player.x -= player.speed;
+  if (keys["d"] && player.x + player.width < canvas.width) player.x += player.speed;
+
+  bullets.forEach((b, i) => {
+    b.y -= b.speed;
+    if (b.y < 0) bullets.splice(i, 1);
+  });
+
+  enemies.forEach((e, i) => {
+    e.y += e.speed;
+    if (e.y > canvas.height) enemies.splice(i, 1);
+  });
+
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      if (
+        b.x < e.x + e.width &&
+        b.x + b.width > e.x &&
+        b.y < e.y + e.height &&
+        b.y + b.height > e.y
+      ) {
+        bullets.splice(bi, 1);
+        enemies.splice(ei, 1);
+        score++;
+      }
+    });
+  });
+
+  for (let e of enemies) {
+    if (
+      e.x < player.x + player.width &&
+      e.x + e.width > player.x &&
+      e.y < player.y + player.height &&
+      e.y + e.height > player.y
+    ) {
+      gameRunning = false;
+      setTimeout(() => {
+        alert("MISSION FAILED. You were compromised.\nKills: " + score);
+        startNewGame();
+      }, 100);
+      break;
+    }
+  }
+
+  // Move cars
+  cars.forEach(car => {
+    car.x += car.speed * car.dir;
+    if (car.dir > 0 && car.x > canvas.width) {
+      car.x = -car.width;
+    } else if (car.dir < 0 && car.x + car.width < 0) {
+      car.x = canvas.width;
+    }
+  });
+
+  // Move clouds
+  clouds.forEach(cloud => {
+    cloud.x += cloud.speed;
+    if (cloud.x - cloud.size > canvas.width) cloud.x = -cloud.size;
+  });
+
+  // Move airplanes
+  airplanes.forEach(plane => {
+    plane.x += plane.speed;
+    if (plane.x - plane.size > canvas.width) plane.x = -plane.size;
+  });
+
+  // Birds flying with flapping wings
+  birds.forEach(bird => {
+    bird.x += bird.speed;
+    if (bird.x > canvas.width) bird.x = -20;
+    bird.wingTimer++;
+    if (bird.wingTimer > 10) {
+      bird.wingUp = !bird.wingUp;
+      bird.wingTimer = 0;
+    }
+  });
+}
+
+function drawCityBackground() {
+  // Buildings
+  for (let b of buildings) {
+    ctx.fillStyle = "#444";
+    ctx.fillRect(b.x, canvas.height - b.height - 100, 60, b.height);
+    ctx.fillStyle = "#ffffcc";
+    for (let j = 0; j < 5; j++) {
+      ctx.fillRect(b.x + 15, canvas.height - b.height - 80 + j * 20, 10, 15);
+      ctx.fillRect(b.x + 35, canvas.height - b.height - 80 + j * 20, 10, 15);
+    }
+  }
+
+  // Trees
+  trees.forEach(tree => {
+    // Trunk
+    ctx.fillStyle = "#663300";
+    ctx.fillRect(tree.x + 8, tree.y + tree.height - 15, 5, 15);
+    // Leaves (simple circles)
+    ctx.fillStyle = "#228822";
+    ctx.beginPath();
+    ctx.arc(tree.x + 18, tree.y + tree.height - 30, 20, 0, Math.PI * 2);
+    ctx.arc(tree.x + 5, tree.y + tree.height - 20, 15, 0, Math.PI * 2);
+    ctx.arc(tree.x + 30, tree.y + tree.height - 20, 15, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Street
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0, canvas.height - 100, canvas.width, 100);
+
+  // Draw cars
+  cars.forEach(car => {
+    ctx.fillStyle = car.color;
+    ctx.fillRect(car.x, car.y, car.width, car.height);
+    // Wheels
+    ctx.fillStyle = "#222";
+    ctx.beginPath();
+    ctx.arc(car.x + 10, car.y + car.height, 7, 0, Math.PI * 2);
+    ctx.arc(car.x + car.width - 10, car.y + car.height, 7, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Clouds
+  clouds.forEach(cloud => {
+    let x = cloud.x;
+    let y = cloud.y;
+    let size = cloud.size;
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.3, 0, Math.PI * 2);
+    ctx.arc(x + size * 0.4, y + 5, size * 0.4, 0, Math.PI * 2);
+    ctx.arc(x + size * 0.8, y, size * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Airplanes
+  airplanes.forEach(plane => {
+    let x = plane.x;
+    let y = plane.y;
+    let size = plane.size;
+    ctx.fillStyle = "#666";
+    ctx.beginPath();
+    // Body
+    ctx.ellipse(x, y, size * 0.6, size * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Wings
+    ctx.fillStyle = "#444";
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.4, y);
+    ctx.lineTo(x, y - size * 0.3);
+    ctx.lineTo(x + size * 0.1, y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.4, y);
+    ctx.lineTo(x, y + size * 0.3);
+    ctx.lineTo(x + size * 0.1, y);
+    ctx.closePath();
+    ctx.fill();
+  });
+
+  // Birds
+  birds.forEach(bird => {
+    let x = bird.x;
+    let y = bird.y;
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (bird.wingUp) {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 10, y - 10);
+      ctx.lineTo(x + 20, y);
+    } else {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 10, y + 10);
+      ctx.lineTo(x + 20, y);
+    }
+    ctx.stroke();
+  });
+}
+
+function drawPlayer(p) {
+  // Legs
+  ctx.fillStyle = "#333";
+  ctx.fillRect(p.x, p.y + 70, 12, 30);
+  ctx.fillRect(p.x + 28, p.y + 70, 12, 30);
+
+  // Body
+  ctx.fillStyle = "#111";
+  ctx.fillRect(p.x, p.y + 20, 40, 50);
+
+  // Arms
+  ctx.fillStyle = "#444";
+  ctx.fillRect(p.x - 10, p.y + 25, 10, 30);
+  ctx.fillRect(p.x + 40, p.y + 25, 10, 30);
+
+  // Gun
+  ctx.fillStyle = "#aaa";
+  ctx.fillRect(p.x + 50, p.y + 30, 15, 5);
+
+  // Head
+  ctx.fillStyle = "#ffe0bd";
+  ctx.beginPath();
+  ctx.arc(p.x + 20, p.y + 10, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Face features
+  ctx.fillStyle = "#000";
+  ctx.fillRect(p.x + 13, p.y + 5, 3, 3); // left eye
+  ctx.fillRect(p.x + 24, p.y + 5, 3, 3); // right eye
+  ctx.beginPath();
+  ctx.arc(p.x + 20, p.y + 13, 5, 0, Math.PI); // mouth
+  ctx.stroke();
+}
+
+function drawEnemy(e) {
+  // Legs
+  ctx.fillStyle = "#550000";
+  ctx.fillRect(e.x, e.y + 70, 12, 30);
+  ctx.fillRect(e.x + 28, e.y + 70, 12, 30);
+
+  // Body
+  ctx.fillStyle = "#990000";
+  ctx.fillRect(e.x, e.y + 20, 40, 50);
+
+  // Arms (bent)
+  ctx.fillStyle = "#880000";
+  ctx.fillRect(e.x - 10, e.y + 30, 10, 25);
+  ctx.fillRect(e.x + 40, e.y + 30, 10, 25);
+
+  // Head
+  ctx.fillStyle = "#ffcc66";
+  ctx.beginPath();
+  ctx.arc(e.x + 20, e.y + 10, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Face - eyes and mouth
+  ctx.fillStyle = "#000";
+  ctx.fillRect(e.x + 13, e.y + 5, 4, 4);
+  ctx.fillRect(e.x + 23, e.y + 5, 4, 4);
+  ctx.beginPath();
+  ctx.arc(e.x + 20, e.y + 15, 6, 0, Math.PI);
+  ctx.stroke();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawCityBackground();
+  drawPlayer(player);
+
+  bullets.forEach(b => {
+    ctx.fillStyle = "red";
+    ctx.fillRect(b.x, b.y, b.width, b.height);
+  });
+
+  enemies.forEach(e => drawEnemy(e));
+
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Kills: " + score, 20, 30);
+
+  if (missionShown) {
+    ctx.fillStyle = "white";
+    ctx.font = "24px Courier New";
+    ctx.fillText(missionText, 50, 60);
+  }
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+setInterval(spawnEnemy, 1200);
+startNewGame();
+gameLoop();
+</script>
+</body>
+</html>

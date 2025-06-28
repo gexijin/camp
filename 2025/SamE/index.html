@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Adventure Game with Inventory and Editor</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #1e1e1e;
+      color: #fff;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+    }
+    #game, #editor {
+      padding: 20px;
+      overflow-y: auto;
+    }
+    #game {
+      width: 60%;
+      background: #111;
+    }
+    #editor {
+      width: 40%;
+      background: #222;
+      border-left: 2px solid #444;
+    }
+    .choice-btn {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      background: #444;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    .choice-btn:hover {
+      background: #666;
+    }
+    #inventory, #stats {
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
+    input, textarea {
+      width: 100%;
+      margin: 5px 0;
+    }
+    h2 {
+      margin-top: 20px;
+      border-bottom: 1px solid #555;
+    }
+  </style>
+</head>
+<body>
+  <div id="game">
+    <h1>Adventure Game</h1>
+    <div id="story"></div>
+    <div id="choices"></div>
+    <div id="inventory"></div>
+    <div id="stats"></div>
+<div style="margin-top: 20px;">
+  <button onclick="saveGame()">Save Game</button>
+  <button onclick="loadGame()">Load Game</button>
+</div>
+
+  </div>
+
+  <div id="editor">
+    <h2>Scene Editor</h2>
+    <label>Scene ID:</label>
+    <input id="sceneId" />
+    <label>Scene Text:</label>
+    <textarea id="sceneText" rows="4"></textarea>
+    <label>Choices (format: Text | NextSceneID):</label>
+    <textarea id="sceneChoices" rows="4"></textarea>
+    <button onclick="saveScene()">Save Scene</button>
+    <hr />
+    <label>Start Scene:</label>
+    <select id="sceneSelect" onchange="loadScene(this.value)"></select>
+  </div>
+
+ <script>
+  const storyEl = document.getElementById('story');
+  const choicesEl = document.getElementById('choices');
+  const inventoryEl = document.getElementById('inventory');
+  const statsEl = document.getElementById('stats');
+
+  const sceneSelect = document.getElementById('sceneSelect');
+  const sceneIdInput = document.getElementById('sceneId');
+  const sceneTextInput = document.getElementById('sceneText');
+  const sceneChoicesInput = document.getElementById('sceneChoices');
+
+  let currentScene = "start";
+
+  // Load saved scenes or fallback to defaults
+  let scenes = JSON.parse(localStorage.getItem("adventureScenes")) || {
+    start: {
+      text: "You wake in a cave. There's a torch and a narrow tunnel.",
+      choices: [
+        { text: "Take torch", next: "torch", inventory: "Torch" },
+        { text: "Enter tunnel", next: "tunnel" }
+      ]
+    },
+    torch: {
+      text: "You pick up the torch. It might be useful.",
+      choices: [{ text: "Enter tunnel", next: "tunnel" }]
+    },
+    tunnel: {
+      text: "You find a door locked with a strange symbol.",
+      choices: [{ text: "Go back", next: "start" }]
+    }
+  };
+
+  const player = {
+    inventory: [],
+    stats: {
+      health: 100,
+      strength: 10
+    }
+  };
+
+  function showScene(sceneId) {
+    currentScene = sceneId;
+    const scene = scenes[sceneId];
+    if (!scene) return;
+
+    storyEl.textContent = scene.text;
+    choicesEl.innerHTML = '';
+
+    if (scene.choices) {
+      scene.choices.forEach(choice => {
+        const btn = document.createElement('button');
+        btn.className = 'choice-btn';
+        btn.textContent = choice.text;
+        btn.onclick = () => {
+          if (choice.inventory && !player.inventory.includes(choice.inventory)) {
+            player.inventory.push(choice.inventory);
+          }
+          showScene(choice.next);
+        };
+        choicesEl.appendChild(btn);
+      });
+    }
+
+    updateInventory();
+    updateStats();
+  }
+
+  function updateInventory() {
+    inventoryEl.innerHTML = `<strong>Inventory:</strong> ${player.inventory.join(', ') || 'None'}`;
+  }
+
+  function updateStats() {
+    statsEl.innerHTML = `<strong>Stats:</strong> ${
+      Object.entries(player.stats).map(([k, v]) => `${k}: ${v}`).join(', ')
+    }`;
+  }
+
+  function saveScene() {
+    const id = sceneIdInput.value.trim();
+    const text = sceneTextInput.value.trim();
+    const rawChoices = sceneChoicesInput.value.trim().split('\n').filter(Boolean);
+
+    if (!id || !text) return alert("Scene ID and text are required");
+
+    const choices = rawChoices.map(line => {
+      const [text, next] = line.split('|').map(s => s.trim());
+      return { text, next };
+    });
+
+    scenes[id] = { text, choices };
+    localStorage.setItem("adventureScenes", JSON.stringify(scenes)); // persist scenes
+    refreshSceneList();
+    alert("Scene saved.");
+  }
+
+  function loadScene(id) {
+    const scene = scenes[id];
+    if (!scene) return;
+    sceneIdInput.value = id;
+    sceneTextInput.value = scene.text;
+    sceneChoicesInput.value = scene.choices.map(c => `${c.text} | ${c.next}`).join('\n');
+    showScene(id);
+  }
+
+  function refreshSceneList() {
+    sceneSelect.innerHTML = '';
+    Object.keys(scenes).forEach(id => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = id;
+      sceneSelect.appendChild(opt);
+    });
+  }
+
+  function saveGame(isAuto = false) {
+    const gameState = {
+      scene: currentScene,
+      inventory: [...player.inventory],
+      stats: { ...player.stats }
+    };
+    localStorage.setItem("adventureGameSave", JSON.stringify(gameState));
+    if (!isAuto) alert("Game saved!");
+  }
+
+  function loadGame() {
+    const saved = localStorage.getItem("adventureGameSave");
+    if (!saved) {
+      alert("No saved game found.");
+      return;
+    }
+
+    try {
+      const gameState = JSON.parse(saved);
+
+      player.inventory = Array.isArray(gameState.inventory) ? [...gameState.inventory] : [];
+      player.stats = typeof gameState.stats === 'object' ? { ...gameState.stats } : { health: 100, strength: 10 };
+
+      if (gameState.scene && scenes[gameState.scene]) {
+        currentScene = gameState.scene;
+        showScene(currentScene);
+        alert("Game loaded!");
+      } else {
+        alert("Saved game contains an invalid scene.");
+      }
+    } catch (e) {
+      console.error("Failed to load game:", e);
+      alert("Failed to load save data.");
+    }
+  }
+
+    refreshSceneList();
+    loadScene("start");
+  </script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Color Match Game</title>
+  <style>
+    body {
+      background: #222;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+
+    #game {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 20px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .color-btn {
+      width: 60px;
+      height: 60px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #targetColorBox {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+
+    .color-preview {
+      width: 30px;
+      height: 30px;
+      border: 2px solid white;
+      border-radius: 6px;
+    }
+
+    #colorName {
+      font-weight: bold;
+      text-transform: capitalize;
+    }
+
+    #status {
+      margin-top: 10px;
+      font-size: 20px;
+    }
+
+    #hint {
+      margin-top: 10px;
+      font-size: 16px;
+      color: #ccc;
+      min-height: 24px;
+    }
+
+    #lives {
+      margin-top: 10px;
+      font-size: 18px;
+      color: #ff5;
+    }
+
+    #startBtn {
+      padding: 10px 20px;
+      font-size: 18px;
+      background: #0af;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🎨 Color Match Game</h1>
+<p>Match the color shown. Survive 10 rounds per level. Lives reset each level.</p>
+<button id="startBtn">Start Game</button>
+
+<div id="targetColorBox" style="display:none;">
+  Click this color: 
+  <div id="colorPreview" class="color-preview"></div>
+  <span id="colorName"></span>
+</div>
+
+<div id="status"></div>
+<div id="hint"></div>
+<div id="lives"></div>
+<div id="game"></div>
+
+<script>
+  let baseColors = ['red', 'pink', 'purple', 'black', 'white', 'gray', 'orange', 'brown'];
+  let extraColors = ['blue', 'green', 'yellow', 'cyan', 'lime', 'gold', 'teal', 'navy', 'maroon', 'beige', 'coral', 'indigo', 'violet'];
+  let currentColors = [...baseColors];
+  let round = 0;
+  let level = 1;
+  let correctColor = '';
+  let lives = 3;
+  let hintStep = 0;
+
+  const gameContainer = document.getElementById('game');
+  const status = document.getElementById('status');
+  const startBtn = document.getElementById('startBtn');
+  const targetColorBox = document.getElementById('targetColorBox');
+  const colorPreview = document.getElementById('colorPreview');
+  const colorName = document.getElementById('colorName');
+  const livesDisplay = document.getElementById('lives');
+  const hintDisplay = document.getElementById('hint');
+
+  function startGame() {
+    round = 0;
+    level = 1;
+    currentColors = [...baseColors];
+    extraColors = ['blue', 'green', 'yellow', 'cyan', 'lime', 'gold', 'teal', 'navy', 'maroon', 'beige', 'coral', 'indigo', 'violet'];
+    lives = 3;
+    status.textContent = '';
+    targetColorBox.style.display = 'flex';
+    nextRound();
+  }
+
+  function nextRound() {
+    round++;
+    if (round > 10) {
+      level++;
+      round = 1;
+
+      // Add 2 new colors per level from extras
+      for (let i = 0; i < 2; i++) {
+        if (extraColors.length > 0) {
+          currentColors.push(extraColors.shift());
+        }
+      }
+
+      // Reset lives back to 3 at new level
+      lives = 3;
+
+      status.textContent = `🚀 Level Up! Starting level ${level} with 3 lives.`;
+      setTimeout(() => {
+        status.textContent = `Level ${level}, Round ${round}`;
+        playRound();
+      }, 1000);
+    } else {
+      status.textContent = `Level ${level}, Round ${round}`;
+      playRound();
+    }
+  }
+
+  function playRound() {
+    hintStep = 0;
+    updateLivesDisplay();
+    hintDisplay.textContent = '';
+    correctColor = currentColors[Math.floor(Math.random() * currentColors.length)];
+    colorPreview.style.backgroundColor = correctColor;
+    colorName.textContent = correctColor;
+    renderButtons(currentColors);
+  }
+
+  function renderButtons(colors) {
+    gameContainer.innerHTML = '';
+    colors
+      .sort(() => Math.random() - 0.5)
+      .forEach(color => {
+        const btn = document.createElement('button');
+        btn.className = 'color-btn';
+        btn.style.backgroundColor = color;
+        btn.dataset.color = color;
+        btn.onclick = () => handleClick(color);
+        gameContainer.appendChild(btn);
+      });
+  }
+
+  function handleClick(color) {
+    if (color === correctColor) {
+      status.textContent = '✅ Correct!';
+      hintDisplay.textContent = '';
+      setTimeout(() => {
+        nextRound();
+      }, 800);
+    } else {
+      lives--;
+      updateLivesDisplay();
+      if (lives > 0) {
+        status.textContent = `❌ Wrong! Try again.`;
+        showHint();
+      } else {
+        status.textContent = `💀 Game over! Restarting from Level 1...`;
+        hintDisplay.textContent = '';
+        setTimeout(startGame, 2000);
+      }
+    }
+  }
+
+  function showHint() {
+    const buttons = [...document.querySelectorAll('.color-btn')];
+    const correctBtn = buttons.find(b => b.dataset.color === correctColor);
+    if (!correctBtn) return;
+
+    const containerRect = gameContainer.getBoundingClientRect();
+    const btnRect = correctBtn.getBoundingClientRect();
+    const relX = btnRect.left + btnRect.width / 2 - containerRect.left;
+    const relY = btnRect.top + btnRect.height / 2 - containerRect.top;
+    const width = containerRect.width;
+    const height = containerRect.height;
+
+    if (hintStep === 0) {
+      hintDisplay.textContent = relX < width / 3
+        ? 'Hint: Left side.'
+        : relX > (2 * width) / 3
+        ? 'Hint: Right side.'
+        : 'Hint: Center.';
+    } else if (hintStep === 1) {
+      hintDisplay.textContent = relY < height / 3
+        ? 'Hint: Top row.'
+        : relY > (2 * height) / 3
+        ? 'Hint: Bottom row.'
+        : 'Hint: Middle row.';
+    } else {
+      const dist = Math.hypot(relX - width / 2, relY - height / 2);
+      const maxDist = Math.hypot(width / 2, height / 2);
+      hintDisplay.textContent = dist < maxDist / 3
+        ? 'Hint: Close to center.'
+        : dist < (2 * maxDist) / 3
+        ? 'Hint: Mid distance.'
+        : 'Hint: Far from center.';
+    }
+
+    hintStep = (hintStep + 1) % 3;
+  }
+
+  function updateLivesDisplay() {
+    livesDisplay.textContent = `❤️ Lives: ${lives}`;
+  }
+
+  startBtn.onclick = startGame;
+</script>
+
+</body>
+</html>

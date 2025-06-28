@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Football Game</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: #2b7a0b;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      user-select: none;
+    }
+    canvas {
+      margin-top: 10px;
+      border: 3px solid #333;
+      background: #3a9c16;
+    }
+    #tdBanner {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 72px;
+      font-weight: bold;
+      color: gold;
+      text-shadow: 2px 2px 5px black;
+      display: none;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0; /* Added for fade effect */
+      transition: opacity 1s ease-out; /* Added for fade effect */
+    }
+    #pausedOverlay {
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      font-size: 32px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      z-index: 5;
+      padding: 20px;
+      margin-bottom: 10px;
+      min-height: 100px;
+      width: 600px;
+      box-sizing: border-box;
+      border-radius: 8px; /* Aesthetic touch */
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3); /* Aesthetic touch */
+    }
+    #hud {
+      margin-top: 10px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #FFF; /* Ensure high contrast */
+      text-shadow: 1px 1px 2px black;
+    }
+    #teamSelectionMenu {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        text-align: center;
+    }
+    #teamSelectionMenu button {
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 5px;
+        transition: transform 0.1s ease; /* Aesthetic touch */
+    }
+    #teamSelectionMenu button:hover {
+        opacity: 0.9; /* Slightly reduce opacity on hover */
+        transform: scale(1.02); /* Slight scale on hover */
+    }
+    #gameStartMessage {
+        display: none;
+        font-size: 28px; /* Larger text */
+        text-shadow: 1px 1px 3px rgba(0,0,0,0.5); /* More prominent shadow */
+    }
+  </style>
+</head>
+<body>
+<h2>Football Game - Press Space to Snap Pass, R to Snap Run</h2>
+<p>Move QB/WR/RB: W/A/S/D | Throw: 0(RB)/1/2/3 (Tap for Lob, Hold for Bullet)</p>
+<h2 id="hud"></h2>
+<div id="pausedOverlay">
+    <div id="teamSelectionMenu">
+        <h3>Choose Your Team:</h3>
+    </div>
+    <div id="gameStartMessage">
+        Press Space for Pass, R for Run
+    </div>
+</div>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+<div id="tdBanner">TOUCHDOWN!</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const tdBanner = document.getElementById('tdBanner');
+const pausedOverlay = document.getElementById('pausedOverlay');
+const hud = document.getElementById('hud'); // Get the HUD element
+const teamSelectionMenu = document.getElementById('teamSelectionMenu');
+const gameStartMessage = document.getElementById('gameStartMessage');
+
+const YARD = 10;
+const FIELD_LENGTH_YARDS = 120;
+const FIELD_WIDTH_YARDS = 53.3;
+const FIELD_WIDTH = FIELD_WIDTH_YARDS * YARD;
+const FIELD_HEIGHT = FIELD_LENGTH_YARDS * YARD;
+const ENDZONE_DEPTH = 10 * YARD;
+const PLAYER_RADIUS = 12;
+const WR_SPEED = 2; // Offensive player speed
+const WR_PAUSE_TIME = 3000;
+
+// NEW CONSTANTS FOR PASS TYPES
+const LOB_SPEED = 5; // Slower, higher trajectory implied
+const BULLET_SPEED = 12; // Faster, lower trajectory implied
+const THROW_HOLD_TIME = 200; // milliseconds to hold for a bullet pass
+
+// NEW CONSTANTS FOR INTERCEPTIONS AND DEFENSE SPEED
+const INTERCEPTION_RADIUS = PLAYER_RADIUS * 2.5; // How close a defender needs to be to the ball
+const INTERCEPTION_CHANCE_LOB = 0.05; // Reduced chance for a lob
+const INTERCEPTION_CHANCE_BULLET = 0.2; // Reduced chance for a bullet
+
+const RUSH_DEF_SPEED = 2.5; // Speed for defensive linemen and rushing linebackers
+const COVERAGE_DEF_SPEED = 1.9; // Speed for coverage defenders (CBs, LBs, FS) - slightly slower than WRs
+
+// NEW CONSTANT FOR DEFENSIVE CLUMPING
+const CLUMPING_OFFSET_MAGNITUDE = PLAYER_RADIUS * 1.5; // Max offset to prevent clumping
+
+const OL_Y = FIELD_HEIGHT - (30 * YARD);  // Line of scrimmage y (offensive line original y)
+
+// Offensive Line (OL) positions
+const OL = Array.from({ length: 5 }, (_, i) => ({
+  x: FIELD_WIDTH / 2 - 100 + i * 50,
+  y: OL_Y
+}));
+
+// Wide receivers lined UP OUTSIDE OL
+const wrStart = {
+  WR1: { x: OL[0].x - 40, y: OL_Y },
+  WR2: { x: OL[2].x + 50, y: OL_Y },
+  WR3: { x: OL[4].x + 40, y: OL_Y }
+};
+
+// QB behind center OL, RB behind QB on right
+const qbStart = { x: OL[2].x, y: OL_Y + 40 };
+const rbStart = { x: qbStart.x + 40, y: qbStart.y + 40 };
+
+// Stored initial start positions
+const initialStartPositions = {
+  QB: { ...qbStart },
+  WR1: { ...wrStart.WR1 },
+  WR2: { ...wrStart.WR2 },
+  WR3: { ...wrStart.WR3 },
+  RB: { ...rbStart }
+};
+
+let positions = JSON.parse(JSON.stringify(initialStartPositions));
+
+const routeDefs = {
+  slant: s => [s, { x: s.x - 30, y: s.y - 60 }, { x: s.x - 60, y: s.y - 120 }],
+  post: s => [s, { x: s.x, y: s.y - 60 }, { x: s.x - 60, y: s.x - 120 }],
+  out: s => [s, { x: s.x, y: s.y - 60 }, { x: s.x + 80, y: s.y - 60 }],
+  in: s => [s, { x: s.x, y: s.y - 60 }, { x: s.x - 80, y: s.y - 60 }],
+  curl: s => [s, { x: s.x, y: s.y - 80 }, { x: s.x + 30, y: s.y - 60 }],
+  corner: s => [s, { x: s.x, y: s.y - 60 }, { x: s.x + 60, y: s.y - 120 }],
+  fade: s => [s, { x: s.x + 40, y: s.y - 80 }, { x: s.x + 80, y: s.y - 160 }],
+  streak: s => [s, { x: s.x, y: s.y - 300 }]
+};
+
+const routeNames = Object.keys(routeDefs);
+const randRoute = () => routeDefs[routeNames[Math.floor(Math.random() * routeNames.length)]];
+
+let routes = {
+  WR1: randRoute()(wrStart.WR1),
+  WR2: randRoute()(wrStart.WR2),
+  WR3: randRoute()(wrStart.WR3),
+  RB: randRoute()(rbStart)
+};
+
+let wrData = {
+  WR1: { progress: 0, vx: 0, vy: 0, stuckTime: null, returning: false, runningUp: false },
+  WR2: { progress: 0, vx: 0, vy: 0, stuckTime: null, returning: false, runningUp: false },
+  WR3: { progress: 0, vx: 0, vy: 0, stuckTime: null, returning: false, runningUp: false },
+  RB: { progress: 0, vx: 0, vy: 0, stuckTime: null, returning: false, runningUp: false }
+};
+
+let ball = {
+  x: positions.QB.x,
+  y: positions.QB.y,
+  heldBy: 'QB',
+  isThrown: false,
+  target: null,
+  speed: LOB_SPEED, // Default to lob speed
+  incomplete: false,
+  passType: 'lob' // NEW: Tracks whether it's a lob or bullet
+};
+
+const keys = {};
+// NEW: Track when a throw key was pressed
+const throwKeyTimers = {
+    '0': null,
+    '1': null,
+    '2': null,
+    '3': null
+};
+
+let camera = { x: 0, y: 0 };
+let playPaused = true;
+let playType = null; // "passing" or "running"
+let snapAnim = null; // null or object for snap animation
+
+// O-line specific data
+let olData = OL.map(() => ({
+    assignedTarget: null, // Stores the name of the defensive player they are blocking
+    isEngaged: false // True if actively blocking
+}));
+
+// NEW: Game state for downs
+let currentDown = 1;
+let yardsToGo = 20 * YARD; // Initial 20 yards to go for a first down
+let lineOfScrimmageY = OL_Y; // Blue line
+let firstDownLineY = OL_Y - yardsToGo; // Yellow line
+
+// NEW: Team selection logic
+const nflTeams = [
+    "Atlanta Falcons", "Buffalo Bills", "Carolina Panthers", "Chicago Bears",
+    "Cincinnati Bengals", "Cleveland Browns", "Dallas Cowboys", "Denver Broncos"
+];
+
+// Team colors mapping (primary, secondary)
+const teamColors = {
+    "Atlanta Falcons": { primary: '#A71930', secondary: '#000000' }, // Red, Black
+    "Buffalo Bills": { primary: '#00338D', secondary: '#C60C30' },   // Blue, Red
+    "Carolina Panthers": { primary: '#0085CA', secondary: '#101820' }, // Blue, Black
+    "Chicago Bears": { primary: '#0B162A', secondary: '#C83803' },   // Navy, Orange
+    "Cincinnati Bengals": { primary: '#FB4F14', secondary: '#000000' }, // Orange, Black
+    "Cleveland Browns": { primary: '#311D00', secondary: '#FF3C00' }, // Brown, Orange
+    "Dallas Cowboys": { primary: '#041E42', secondary: '#869397' },  // Navy, Silver
+    "Denver Broncos": { primary: '#FB4F14', secondary: '#002244' }   // Orange, Navy
+};
+
+
+let selectedTeam = null; // Stores the chosen team name
+let defensiveTeam = null; // Stores the randomly selected defensive team
+
+function showTeamSelection() {
+    teamSelectionMenu.style.display = 'flex';
+    gameStartMessage.style.display = 'none';
+    teamSelectionMenu.innerHTML = '<h3>Choose Your Team:</h3>';
+    nflTeams.forEach(teamName => {
+        const button = document.createElement('button');
+        button.textContent = teamName;
+        // Apply team primary color to button background for visual cue
+        if (teamColors[teamName]) {
+            button.style.backgroundColor = teamColors[teamName].primary;
+            button.style.color = teamColors[teamName].secondary === '#000000' ? 'white' : teamColors[teamName].secondary; // Adjust text color for contrast
+        }
+        button.addEventListener('click', () => selectTeam(teamName));
+        teamSelectionMenu.appendChild(button);
+    });
+}
+
+function selectTeam(teamName) {
+    selectedTeam = teamName;
+    teamSelectionMenu.style.display = 'none';
+    gameStartMessage.style.display = 'block'; // Show game start message
+    playPaused = true; // Keep play paused until snap
+    updateHUD(); // Update HUD to show selected team
+    selectDefensiveTeam(); // Select a defensive team once offensive team is chosen
+}
+
+function selectDefensiveTeam() {
+    let availableTeams = nflTeams.filter(team => team !== selectedTeam); // Exclude the offensive team
+    if (availableTeams.length > 0) {
+        defensiveTeam = availableTeams[Math.floor(Math.random() * availableTeams.length)];
+    } else if (nflTeams.length > 0) {
+        // Fallback: If only one team exists (and it's the offensive team), pick that for defense too
+        // or handle as a scenario where no distinct defensive team can be picked.
+        // For simplicity, let's just pick any if no distinct option.
+        defensiveTeam = nflTeams[Math.floor(Math.random() * nflTeams.length)];
+    } else {
+        defensiveTeam = null; // No teams available at all
+    }
+}
+
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+
+  if (selectedTeam && (e.code === 'Space' || e.key.toLowerCase() === 'r') && playPaused && !snapAnim) {
+    playType = (e.code === 'Space') ? 'passing' : 'running';
+    snapAnim = { progress: 0, duration: 30 };
+    pausedOverlay.style.display = 'none';
+  }
+
+  // Handle throw key press (start timer)
+  if (!ball.isThrown && ball.heldBy === 'QB' && !playPaused && !snapAnim) {
+    const throwKey = e.key;
+    if (['0', '1', '2', '3'].includes(throwKey)) {
+        if (throwKey === '0' && playType !== 'passing') return; // Only allow RB throw on pass plays
+        if (throwKeyTimers[throwKey] === null) { // Only start timer if not already holding
+            throwKeyTimers[throwKey] = performance.now(); // Use performance.now() for better accuracy
+        }
+    }
+  }
+});
+
+window.addEventListener('keyup', e => {
+  keys[e.key.toLowerCase()] = false;
+
+  // Handle throw key release (determine pass type and throw)
+  if (!ball.isThrown && ball.heldBy === 'QB' && !playPaused && !snapAnim) {
+    const throwKey = e.key;
+    if (['0', '1', '2', '3'].includes(throwKey)) {
+        if (throwKey === '0' && playType !== 'passing') return;
+
+        const holdDuration = performance.now() - throwKeyTimers[throwKey];
+        let passType = 'lob';
+        if (holdDuration >= THROW_HOLD_TIME) {
+            passType = 'bullet';
+        }
+
+        let targetPlayer = null;
+        if (throwKey === '1') targetPlayer = 'WR1';
+        else if (throwKey === '2') targetPlayer = 'WR2';
+        else if (throwKey === '3') targetPlayer = 'WR3';
+        else if (throwKey === '0') targetPlayer = 'RB';
+
+        if (targetPlayer) {
+            throwTo(targetPlayer, passType);
+        }
+        throwKeyTimers[throwKey] = null; // Reset timer
+    }
+  }
+});
+
+// Modified throwTo function to accept passType
+function throwTo(wr, passType) {
+  if (playPaused || snapAnim) return;
+  const inaccurate = isQbMoving() && Math.random() < 0.3;
+  ball.isThrown = true;
+  ball.target = wr;
+  ball.incomplete = inaccurate;
+  ball.passType = passType; // Set the pass type
+
+  // Adjust ball speed based on pass type
+  ball.speed = (passType === 'bullet') ? BULLET_SPEED : LOB_SPEED;
+
+  if (inaccurate) {
+    const t = positions[wr];
+    // Inaccurate throw target calculation
+    ball.badTarget = { x: t.x + (Math.random() - 0.5) * 100, y: t.y + (Math.random() - 0.5) * 100 };
+  }
+  ball.heldBy = null; // Ball is no longer held by QB once thrown
+}
+
+function isQbMoving() {
+  return keys.w || keys.a || keys.s || keys.d;
+}
+
+function updateRouteRunner(wr) {
+  // Do not move if the play is paused or during snap animation
+  if (playPaused || snapAnim) {
+    return;
+  }
+
+  const p = positions[wr];
+  const data = wrData[wr];
+  const now = Date.now();
+
+  // If this player just caught the ball, they stop following their route
+  if (ball.heldBy === wr) {
+      data.vx = 0; // Stop current route movement
+      data.vy = 0;
+      data.stuckTime = null; // Reset stuck status
+      data.returning = false;
+      data.runningUp = false;
+      return; // Player with ball is controlled by player input via updateControlled()
+  }
+
+  // Handle out of bounds / stuck players returning to QB
+  if (!data.returning && !data.runningUp) {
+    if (p.x < 0 || p.x > FIELD_WIDTH || p.y < 0 || p.y > FIELD_HEIGHT) {
+      if (!data.stuckTime) data.stuckTime = now;
+      if (now - data.stuckTime >= WR_PAUSE_TIME) {
+        data.returning = true;
+        data.stuckTime = null;
+      }
+      return;
+    }
+  }
+
+  if (data.returning) {
+    const qb = positions.QB;
+    const dx = qb.x - p.x;
+    const dy = qb.y - p.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= 100) { // If close to QB, start running upfield
+      data.returning = false;
+      data.runningUp = true;
+      data.vx = 0;
+      data.vy = -WR_SPEED;
+    } else { // Move towards QB
+      data.vx = (dx / dist) * WR_SPEED;
+      data.vy = (dy / dist) * WR_SPEED;
+      p.x += data.vx;
+      p.y += data.vy;
+    }
+    return;
+  }
+
+  if (data.runningUp) {
+    p.y += data.vy; // Continue running upfield
+    return;
+  }
+
+  // Follow the defined route
+  const route = routes[wr];
+  if (data.progress < route.length - 1) {
+    const next = route[data.progress + 1];
+    const dx = next.x - p.x;
+    const dy = next.y - p.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < WR_SPEED) { // Reached current waypoint, move to next
+      data.progress++;
+    } else { // Move towards waypoint
+      data.vx = (dx / dist) * WR_SPEED;
+      data.vy = (dy / dist) * WR_SPEED;
+      p.x += data.vx;
+      p.y += data.vy;
+    }
+  } else {
+    // If route completed, keep moving in last direction or stop
+    p.x += data.vx;
+    p.y += data.vy;
+  }
+}
+
+function updateBall() {
+  if (ball.isThrown) {
+    const target = ball.incomplete ? ball.badTarget : positions[ball.target];
+    const dx = target.x - ball.x;
+    const dy = target.y - ball.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Interception check
+    const defPositions = window.defPositions;
+    for (const defName in defPositions) {
+      const defP = defPositions[defName];
+      const distToDef = Math.sqrt(Math.pow(defP.x - ball.x, 2) + Math.pow(defP.y - ball.y, 2));
+
+      if (distToDef < INTERCEPTION_RADIUS) {
+        let interceptionChance = 0;
+        if (ball.passType === 'bullet') {
+          interceptionChance = INTERCEPTION_CHANCE_BULLET;
+        } else {
+          interceptionChance = INTERCEPTION_CHANCE_LOB;
+        }
+
+        // NEW: Make it harder for DL to intercept
+        if (defName.startsWith('DL')) {
+            interceptionChance *= 0.4; // 60% reduction in chance for DL
+        }
+
+        if (Math.random() < interceptionChance) {
+          ball.heldBy = defName; // Defender caught the ball!
+          ball.isThrown = false;
+          ball.incomplete = false; // It's an interception, not an incomplete pass
+          showBanner('INTERCEPTION!', 'gold'); // Use showBanner
+          // Snap ball to intercepting defender's position
+          ball.x = defP.x;
+          ball.y = defP.y;
+          // MODIFICATION: Interception reset - turnover of possession
+          resetPlay(lineOfScrimmageY, false); // New drive for defending team at interception spot
+          return; // Stop further ball movement and checks for this frame
+        }
+      }
+    }
+
+    if (dist < ball.speed) {
+      // Ball reached target (if not intercepted)
+      ball.isThrown = false;
+      if (ball.incomplete) {
+        ball.heldBy = null;
+        showBanner('INCOMPLETE!', 'lightgray'); // Use showBanner
+        resetPlay(lineOfScrimmageY, true); // Reset to line of scrimmage for incomplete, carry over down
+      } else {
+        // Ball caught by receiver!
+        ball.heldBy = ball.target;
+        ball.x = positions[ball.target].x; // Snap ball to receiver's position
+        ball.y = positions[ball.target].y;
+      }
+    } else {
+      // Ball is still in air, move it
+      ball.x += (dx / dist) * ball.speed;
+      ball.y += (dy / dist) * ball.speed;
+    }
+  } else if (ball.heldBy) {
+    // Ball is held, update its position to follow the holder
+    const p = positions[ball.heldBy];
+    ball.x = p.x;
+    ball.y = p.y;
+  }
+}
+
+function updateControlled() {
+  if (playPaused || snapAnim) return;
+  const h = ball.heldBy; // This 'h' can now be QB, WR1, WR2, WR3, or RB
+  if (positions[h]) {
+    const p = positions[h];
+    if (keys.w) p.y -= 3;
+    if (keys.s) p.y += 3;
+    if (keys.a) p.x -= 3;
+    if (keys.d) p.x += 3;
+    p.x = Math.min(Math.max(p.x, 0), FIELD_WIDTH);
+    p.y = Math.min(Math.max(p.y, 0), FIELD_HEIGHT);
+  }
+}
+
+function updateCamera() {
+  if (playPaused || snapAnim) {
+    // Before snap: camera locked on QB
+    camera.x += ((positions.QB.x - canvas.width / 2) - camera.x) * 0.2;
+    camera.y += ((positions.QB.y - canvas.height / 2) - camera.y) * 0.2;
+  } else {
+    // During play, camera follows ball or holder (which could be a WR/RB now)
+    const target = ball.isThrown ? ball : positions[ball.heldBy || 'QB']; // If no one holds, follow QB
+    // Smooth camera movement:
+    camera.x += ((target.x - canvas.width / 2) - camera.x) * 0.15; // Increased smoothing factor
+    camera.y += ((target.y - canvas.height / 2) - camera.y) * 0.15; // Increased smoothing factor
+  }
+}
+function screenX(x) { return x - camera.x; }
+function screenY(y) { return y - camera.y; }
+
+// Modified drawPlayer to use selected team's colors for offense
+function drawPlayer(pos, label, color) {
+  ctx.beginPath();
+  let playerColor, textColor;
+
+  // If it's an offensive player (QB, WR, RB, OL)
+  if (['QB', 'WR1', 'WR2', 'WR3', 'RB'].includes(label) || label.startsWith('OL')) {
+    if (selectedTeam && teamColors[selectedTeam]) {
+      const team = teamColors[selectedTeam];
+      playerColor = team.primary;
+      textColor = getContrastColor(team.primary); // Determine text color for contrast
+    } else {
+      playerColor = color; // Fallback if no team selected or colors not found
+      textColor = 'white';
+    }
+  } else {
+    // Defensive players
+    if (defensiveTeam && teamColors[defensiveTeam]) {
+        const team = teamColors[defensiveTeam];
+        playerColor = team.primary;
+        textColor = getContrastColor(team.primary);
+    } else {
+        playerColor = color; // Fallback to default
+        textColor = 'white';
+    }
+  }
+
+  ctx.fillStyle = playerColor;
+  ctx.arc(screenX(pos.x), screenY(pos.y), PLAYER_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = textColor;
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, screenX(pos.x), screenY(pos.y) + 4);
+}
+
+// Helper to determine contrasting text color (black or white)
+function getContrastColor(hexcolor) {
+    // Remove # and convert to RGB
+    const r = parseInt(hexcolor.slice(1, 3), 16);
+    const g = parseInt(hexcolor.slice(3, 5), 16);
+    const b = parseInt(hexcolor.slice(5, 7), 16);
+
+    // Calculate luminance (perceived brightness)
+    // Formula: (0.299*R + 0.587*G + 0.114*B) / 255
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    // Use a threshold to decide between black and white
+    return luminance > 0.5 ? 'black' : 'white';
+}
+
+
+function drawBall() {
+  if (!ball.heldBy && !ball.isThrown) return; // Only draw if held or thrown
+  ctx.beginPath();
+  ctx.fillStyle = ball.incomplete ? 'gray' : 'brown';
+  ctx.arc(screenX(ball.x), screenY(ball.y), 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+function drawField() {
+  ctx.fillStyle = '#3a9c16';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(screenX(0), screenY(0), FIELD_WIDTH, FIELD_HEIGHT);
+
+  ctx.fillStyle = '#1e4a0d';
+  ctx.fillRect(screenX(0), screenY(0), FIELD_WIDTH, ENDZONE_DEPTH);
+  ctx.fillRect(screenX(0), screenY(FIELD_HEIGHT - ENDZONE_DEPTH), FIELD_WIDTH, ENDZONE_DEPTH);
+
+  // NEW: Draw Line of Scrimmage (Blue Line)
+  ctx.strokeStyle = 'blue';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(screenX(0), screenY(lineOfScrimmageY));
+  ctx.lineTo(screenX(FIELD_WIDTH), screenY(lineOfScrimmageY));
+  ctx.stroke();
+
+  // NEW: Draw First Down Marker (Yellow Line)
+  // Only draw if not in the endzone (which means a TD has been scored or the line is behind the goal line)
+  if (firstDownLineY > ENDZONE_DEPTH && firstDownLineY < FIELD_HEIGHT - ENDZONE_DEPTH) {
+    ctx.strokeStyle = 'yellow';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(screenX(0), screenY(firstDownLineY));
+    ctx.lineTo(screenX(FIELD_WIDTH), screenY(firstDownLineY));
+    ctx.stroke();
+  }
+
+
+  ctx.strokeStyle = 'white';
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= FIELD_HEIGHT; y += 5 * YARD) {
+    ctx.beginPath();
+    ctx.moveTo(screenX(0), screenY(y));
+    ctx.lineTo(screenX(FIELD_WIDTH), screenY(y));
+    ctx.stroke();
+  }
+}
+
+// Draw arrows for routes before snap
+function drawArrow(fromX, fromY, toX, toY) {
+  const headlen = 10; // length of head in pixels
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const angle = Math.atan2(dy, dx);
+  ctx.strokeStyle = 'yellow';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(screenX(fromX), screenY(fromY));
+  ctx.lineTo(screenX(toX), screenY(toY));
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(screenX(toX), screenY(toY));
+  ctx.lineTo(screenX(toX - headlen * Math.cos(angle - Math.PI / 6)), screenY(toY - headlen * Math.sin(angle - Math.PI / 6)));
+  ctx.lineTo(screenX(toX - headlen * Math.cos(angle + Math.PI / 6)), screenY(toY - headlen * Math.sin(angle + Math.PI / 6)));
+  ctx.lineTo(screenX(toX), screenY(toY));
+  ctx.fillStyle = 'yellow';
+  ctx.fill();
+}
+
+function drawRoutes() {
+  if (!playPaused || snapAnim) return; // Only show routes before snap
+
+  ['WR1', 'WR2', 'WR3', 'RB'].forEach(wr => {
+    const route = routes[wr];
+    for (let i = 0; i < route.length - 1; i++) {
+      drawArrow(route[i].x, route[i].y, route[i + 1].x, route[i + 1].y);
+    }
+  });
+}
+
+function checkTouchdown() {
+  if (!ball.heldBy) return false; // Must be holding the ball
+  const p = positions[ball.heldBy];
+
+  // Touchdown only if ball carrier is in OPPONENT'S endzone (top of field)
+  if (p.y <= ENDZONE_DEPTH) return true;
+
+  return false;
+}
+
+function isInOwnEndzone(playerPos) {
+  // Own endzone is the area behind the line of scrimmage toward bottom of field
+  return playerPos.y >= FIELD_HEIGHT - ENDZONE_DEPTH;
+}
+
+function resetRoutesProgress() {
+  Object.keys(wrData).forEach(wr => {
+    wrData[wr] = { progress: 0, vx: 0, vy: 0, stuckTime: null, returning: false, runningUp: false };
+  });
+}
+
+// Defensive formations:
+const DEF_FORMATIONS = {
+  dime: {
+    CB1: { x: wrStart.WR1.x - 60, y: OL_Y - 40 },
+    CB2: { x: wrStart.WR2.x + 60, y: OL_Y - 40 },
+    FS:  { x: FIELD_WIDTH / 2, y: OL_Y - 160 },
+    LB1: { x: FIELD_WIDTH / 2 - 40, y: OL_Y - 90 },
+    LB2: { x: FIELD_WIDTH / 2 + 40, y: OL_Y - 90 },
+    DL1: { x: OL[0].x, y: OL_Y - 30 },
+    DL2: { x: OL[4].x, y: OL[4].y - 30 }
+  },
+  nickel: {
+    CB1: { x: wrStart.WR1.x - 35, y: OL_Y - 85 },
+    CB2: { x: wrStart.WR2.x + 35, y: OL_Y - 85 },
+    FS:  { x: FIELD_WIDTH / 2, y: OL_Y - 130 },
+    LB1: { x: FIELD_WIDTH / 2 - 25, y: OL_Y - 80 },
+    LB2: { x: FIELD_WIDTH / 2 + 25, y: OL_Y - 80 },
+    DL1: { x: OL[0].x, y: OL_Y - 25 },
+    DL2: { x: OL[4].x, y: OL[4].y - 25 }
+  },
+  man: {
+    CB1: { x: wrStart.WR1.x - 40, y: OL_Y - 50 },
+    CB2: { x: wrStart.WR2.x + 40, y: OL_Y - 50 },
+    FS:  { x: FIELD_WIDTH / 2, y: OL_Y - 130 },
+    LB1: { x: FIELD_WIDTH / 2 - 25, y: OL_Y - 80 },
+    LB2: { x: FIELD_WIDTH / 2 + 25, y: OL_Y - 80 },
+    DL1: { x: OL[0].x, y: OL_Y - 25 },
+    DL2: { x: OL[4].x, y: OL[4].y - 25 }
+  },
+  zone: {
+    CB1: { x: FIELD_WIDTH / 4, y: OL_Y - 60 },
+    CB2: { x: FIELD_WIDTH / 1.5, y: OL_Y - 60 },
+    FS:  { x: FIELD_WIDTH / 2, y: OL_Y - 150 },
+    LB1: { x: FIELD_WIDTH / 3, y: OL_Y - 90 },
+    LB2: { x: FIELD_WIDTH / 1.7, y: OL_Y - 90 },
+    DL1: { x: OL[0].x, y: OL_Y - 25 },
+    DL2: { x: OL[4].x, y: OL[4].y - 25 }
+  }
+};
+
+let currentFormationName = 'dime';
+
+function setupDefenseFormation() {
+  const names = Object.keys(DEF_FORMATIONS);
+  // Randomly pick between 'man', 'zone', 'dime', 'nickel'
+  currentFormationName = names[Math.floor(Math.random() * names.length)];
+
+  window.defPositions = JSON.parse(JSON.stringify(DEF_FORMATIONS[currentFormationName]));
+  window.defPositionsStart = JSON.parse(JSON.stringify(window.defPositions));
+
+  window.defData = {};
+  for (const defName in window.defPositions) {
+    if (defName.startsWith('DL')) {
+      window.defData[defName] = { vx: 0, vy: 0, mode: 'rush' };
+    } else if (defName.startsWith('CB')) {
+      window.defData[defName] = { vx: 0, vy: 0, mode: currentFormationName === 'man' ? 'man_coverage' : 'zone_coverage' };
+      if (currentFormationName === 'man') {
+        if (defName === 'CB1') window.defData[defName].assignedTarget = 'WR1';
+        if (defName === 'CB2') window.defData[defName].assignedTarget = 'WR2';
+      } else if (currentFormationName === 'zone') {
+        window.defData[defName].zoneTargetX = window.defPositions[defName].x;
+        window.defData[defName].zoneTargetY = window.defPositions[defName].y;
+      }
+    } else if (defName.startsWith('LB')) {
+      // LBs can be rushers or coverage, randomize their individual mode
+      window.defData[defName] = { vx: 0, vy: 0, mode: Math.random() < 0.4 && currentFormationName !== 'man' && currentFormationName !== 'zone' ? 'rush' : (currentFormationName === 'man' ? 'man_coverage' : 'zone_coverage') };
+      
+      if (currentFormationName === 'man') {
+        if (defName === 'LB1') window.defData[defName].assignedTarget = 'RB';
+        if (defName === 'LB2') window.defData[defName].assignedTarget = 'WR3'; // Assuming WR3 might be covered by LB2 in man
+      } else if (currentFormationName === 'zone') {
+        window.defData[defName].zoneTargetX = window.defPositions[defName].x;
+        window.defData[defName].zoneTargetY = window.defPositions[defName].y;
+      }
+    } else if (defName.startsWith('FS')) {
+        window.defData[defName] = { vx: 0, vy: 0, mode: 'zone_coverage' }; // FS is typically zone or deep man
+        if (currentFormationName === 'zone' || currentFormationName === 'man') { // FS has a deep zone in zone, or deep man responsibility
+            window.defData[defName].zoneTargetX = window.defPositions[defName].x;
+            window.defData[defName].zoneTargetY = window.defPositions[defName].y;
+            // In man, FS could also have a deep assigned target, but for simplicity, we keep him zone-like.
+            if (currentFormationName === 'man') {
+                window.defData[defName].assignedTarget = 'QB'; // Or deepest WR, but for now a general safety over QB
+                window.defData[defName].mode = 'man_coverage';
+            }
+        }
+    }
+  }
+}
+
+// Function to show a banner message with fade-out
+function showBanner(message, color = 'gold') {
+    tdBanner.textContent = message;
+    tdBanner.style.color = color;
+    tdBanner.style.display = 'block';
+    tdBanner.style.opacity = 1;
+    setTimeout(() => {
+        tdBanner.style.opacity = 0;
+        // Hide display after fade-out completes
+        setTimeout(() => {
+            tdBanner.style.display = 'none';
+        }, 1000); // This should match the CSS transition duration
+    }, 1500); // Display message for 1.5 seconds before starting fade
+}
+
+// NEW: Updated resetPlay function to handle downs
+function resetPlay(newBallY = OL_Y, carryOverDown = false) {
+  playPaused = true;
+  playType = null;
+  snapAnim = null;
+  // Only show paused overlay with game start message if a team has been selected
+  if (selectedTeam) {
+    // If a banner is still showing, it will fade out on its own.
+    // Ensure the paused overlay becomes visible for the next play.
+    pausedOverlay.style.display = 'flex';
+    gameStartMessage.style.display = 'block';
+    teamSelectionMenu.style.display = 'none';
+  } else {
+      // If no team selected, ensure only team selection menu is visible
+      pausedOverlay.style.display = 'flex';
+      showTeamSelection();
+  }
+
+
+  // Determine the new line of scrimmage (where the ball is spotted)
+  lineOfScrimmageY = newBallY; // This is the new blue line
+
+  if (!carryOverDown) { // Resetting for new drive (TD, Interception, Turnover on Downs)
+    currentDown = 1;
+    yardsToGo = 20 * YARD; // Always 20 yards for a fresh drive
+    firstDownLineY = lineOfScrimmageY - yardsToGo;
+    selectDefensiveTeam(); // Select a new defensive team for a new drive
+  } else { // After a play ends (tackle, incomplete, sack)
+    const yardsGained = lineOfScrimmageY - newBallY; // Positive if moved forward, negative if lost yards
+    
+    if (newBallY <= firstDownLineY) { // Achieved first down (ball crossed yellow line)
+      currentDown = 1;
+      yardsToGo = 20 * YARD; // Reset to 20 yards for new first down
+      lineOfScrimmageY = newBallY; // New LOS is where the ball ended
+      firstDownLineY = lineOfScrimmageY - yardsToGo; // Calculate new first down line
+      showBanner('FIRST DOWN!', 'white'); // Indicate first down
+    } else {
+      currentDown++;
+      yardsToGo -= yardsGained; // Remaining yards to go (positive if gained, subtract from YTG)
+      
+      // If yardsToGo becomes negative, it means they overshot and got a first down, recalculate
+      if (yardsToGo < 0) {
+          currentDown = 1;
+          yardsToGo = 20 * YARD;
+          lineOfScrimmageY = newBallY;
+          firstDownLineY = lineOfScrimmageY - yardsToGo;
+          showBanner('FIRST DOWN!', 'white');
+      }
+      
+      lineOfScrimmageY = newBallY; // New LOS is where the ball ended
+
+      if (currentDown > 4) {
+        // Turnover on downs!
+        showBanner('TURNOVER ON DOWNS!', 'orange');
+        // Opponent gets ball roughly at this spot, but reset for their drive
+        // For simplicity, let's reset to midfield or their own 20 after a delay
+        setTimeout(() => {
+          resetPlay(FIELD_HEIGHT - (20 * YARD), false); // Opponent gets ball at their 20 yard line
+        }, 1500); // Wait for banner to display before full reset
+        return; // Exit to prevent normal play reset if turnover
+      }
+    }
+  }
+
+  // Update player positions based on the new lineOfScrimmageY
+  positions.QB.x = initialStartPositions.QB.x;
+  positions.QB.y = lineOfScrimmageY + 40;
+  positions.RB.x = positions.QB.x + 40;
+  positions.RB.y = positions.QB.y + 40;
+  positions.WR1.x = initialStartPositions.WR1.x;
+  positions.WR1.y = lineOfScrimmageY;
+  positions.WR2.x = initialStartPositions.WR2.x;
+  positions.WR2.y = lineOfScrimmageY;
+  positions.WR3.x = initialStartPositions.WR3.x;
+  positions.WR3.y = lineOfScrimmageY;
+
+  // Update OL positions based on new scrimmage line
+  OL.forEach((ol, i) => {
+      ol.y = lineOfScrimmageY;
+      ol.x = initialStartPositions.QB.x - 100 + i * 50; // Keep horizontal spacing consistent
+  });
+
+
+  resetRoutesProgress();
+  // Recalculate routes based on new WR/RB start positions
+  routes = {
+    WR1: randRoute()(positions.WR1),
+    WR2: randRoute()(positions.WR2),
+    WR3: randRoute()(positions.WR3),
+    RB: randRoute()(positions.RB)
+  };
+
+  ball = {
+    x: positions.QB.x,
+    y: positions.QB.y,
+    heldBy: 'QB',
+    isThrown: false,
+    target: null,
+    speed: LOB_SPEED,
+    incomplete: false,
+    passType: 'lob'
+  };
+
+  setupDefenseFormation(); // Setup new defense on reset
+
+  // Reset O-line assignments
+  olData.forEach(ol => {
+      ol.assignedTarget = null;
+      ol.isEngaged = false;
+  });
+
+  updateHUD(); // Update the HUD display
+}
+
+
+// Defensive update with enhanced logic
+function updateDefense() {
+  if (!window.defPositions) {
+    setupDefenseFormation();
+  }
+  const defPositions = window.defPositions;
+  const defPositionsStart = window.defPositionsStart;
+  const defData = window.defData;
+  // Use specific speeds based on mode
+  let currentDefSpeed;
+
+  Object.keys(defPositions).forEach(defName => {
+    const defP = defPositions[defName];
+    const data = defData[defName];
+    let targetX, targetY;
+
+    // Determine speed for the current defender
+    if (data.mode === 'rush') {
+        currentDefSpeed = RUSH_DEF_SPEED;
+    } else { // man_coverage or zone_coverage
+        currentDefSpeed = COVERAGE_DEF_SPEED;
+    }
+
+    // Default target is starting position if play is paused or during snap
+    if (snapAnim || playPaused) {
+      // Adjust def starting positions based on the current lineOfScrimmageY
+      const relativeYOffset = defPositionsStart[defName].y - OL_Y;
+      targetX = defPositionsStart[defName].x;
+      targetY = lineOfScrimmageY + relativeYOffset;
+    } else { // Play is active
+      if (data.mode === 'rush') { // DL always rush, some LBs might rush
+        targetX = positions.QB.x;
+        targetY = positions.QB.y;
+      } else if (data.mode === 'man_coverage') {
+        const assignedOffensivePlayer = data.assignedTarget;
+        if (assignedOffensivePlayer && positions[assignedOffensivePlayer]) {
+          targetX = positions[assignedOffensivePlayer].x;
+          targetY = positions[assignedOffensivePlayer].y;
+        } else { // Fallback if no target or target moved off field
+          // Adjust fallback to current line of scrimmage
+          const relativeYOffset = defPositionsStart[defName].y - OL_Y;
+          targetX = defPositionsStart[defName].x;
+          targetY = lineOfScrimmageY + relativeYOffset;
+        }
+      } else if (data.mode === 'zone_coverage') {
+        // Default target is their zone coordinate
+        // Adjust zone target based on current line of scrimmage
+        const relativeYOffset = defPositionsStart[defName].y - OL_Y;
+        targetX = defPositionsStart[defName].x;
+        targetY = lineOfScrimmageY + relativeYOffset;
+
+        let offensivePlayersInZone = [];
+        ['WR1', 'WR2', 'WR3', 'RB'].forEach(offName => {
+            const offPos = positions[offName];
+            // Check if an offensive player is inside this defender's immediate zone (smaller radius)
+            const distToDefenderFromOff = Math.sqrt(Math.pow(offPos.x - defP.x, 2) + Math.pow(offPos.y - defP.y, 2));
+            if (distToDefenderFromOff < PLAYER_RADIUS * 4) { // Only react if very close
+                offensivePlayersInZone.push(offPos);
+            }
+        });
+
+        // Prioritize reacting to the ball
+        if (ball.isThrown) {
+             const ballTargetPos = ball.incomplete ? ball.badTarget : positions[ball.target];
+             const distToBall = Math.sqrt(Math.pow(ball.x - defP.x, 2) + Math.pow(ball.y - defP.y, 2));
+             if (distToBall < INTERCEPTION_RADIUS * 2) { // If ball is somewhat close, react to it
+                 targetX = ball.x;
+                 targetY = ball.y;
+             } else if (offensivePlayersInZone.length > 0) {
+                 // If ball not close, cover nearest offensive player in zone
+                 targetX = offensivePlayersInZone[0].x;
+                 targetY = offensivePlayersInZone[0].y;
+             }
+        } else if (ball.heldBy) { // If ball is held, chase ball carrier if they enter their zone or are close
+            const ballCarrierPos = positions[ball.heldBy];
+            const distToCarrier = Math.sqrt(Math.pow(ballCarrierPos.x - defP.x, 2) + Math.pow(ballCarrierPos.y - defP.y, 2));
+            if (distToCarrier < PLAYER_RADIUS * 10) { // Chase if ball carrier is relatively close
+                 targetX = ballCarrierPos.x;
+                 targetY = ballCarrierPos.y;
+            } else if (offensivePlayersInZone.length > 0) {
+                 targetX = offensivePlayersInZone[0].x;
+                 targetY = offensivePlayersInZone[0].y;
+            }
+        } else if (offensivePlayersInZone.length > 0) {
+            // If no ball activity, cover nearest offensive player in their zone
+            targetX = offensivePlayersInZone[0].x;
+            targetY = offensivePlayersInZone[0].y;
+        }
+      }
+
+      // Prevent Clumping when chasing the ball carrier:
+      // Apply offset only when actively chasing the ball carrier and not just covering a zone or man target far away.
+      const isChasingBallCarrier = ball.heldBy && (
+          data.mode === 'rush' || // Rushers always chase QB (ball carrier)
+          (data.mode === 'zone_coverage' && Math.sqrt(Math.pow(defP.x - positions[ball.heldBy].x, 2) + Math.pow(defP.y - positions[ball.heldBy].y, 2)) < PLAYER_RADIUS * 10) || // Zone defender chasing close carrier
+          (data.mode === 'man_coverage' && data.assignedTarget === ball.heldBy) // Man defender chasing their assigned carrier
+      );
+
+      if (isChasingBallCarrier) {
+        const currentCarrier = positions[ball.heldBy];
+        // Distribute defenders around the ball carrier based on their index in the defPositions array
+        const defenderIndex = Object.keys(defPositions).indexOf(defName);
+        const numDefenders = Object.keys(defPositions).length;
+        const angleOffset = (defenderIndex * (Math.PI * 2 / numDefenders)); // Evenly spread angles
+        targetX = currentCarrier.x + Math.cos(angleOffset) * CLUMPING_OFFSET_MAGNITUDE;
+        targetY = currentCarrier.y + Math.sin(angleOffset) * CLUMPING_OFFSET_MAGNITUDE;
+      }
+    }
+
+    // Movement towards target using determined speed
+    const dx = targetX - defP.x;
+    const dy = targetY - defP.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 1) {
+      data.vx = (dx / dist) * currentDefSpeed;
+      data.vy = (dy / dist) * currentDefSpeed;
+      defP.x += data.vx;
+      defP.y += data.vy;
+    } else {
+      data.vx = 0;
+      data.vy = 0;
+    }
+
+    // Sack detection (DL or rushing LB close to QB ONLY with ball and not thrown)
+    if (!snapAnim && !playPaused && data.mode === 'rush' && dist < PLAYER_RADIUS * 2 && ball.heldBy === 'QB' && !ball.isThrown) {
+      ball.isThrown = false;
+      ball.heldBy = null;
+      if (isInOwnEndzone(positions.QB)) {
+        showBanner('SAFETY!', 'blue');
+      } else {
+        showBanner('SACK!', 'red');
+      }
+      // MODIFICATION: Sack reset
+      resetPlay(positions.QB.y, true); // Reset to QB's position (Line of Scrimmage), carry over down
+      return;
+    }
+  });
+
+  // *** Improved Offensive Line (OL) Logic ***
+  if (!playPaused && !snapAnim) {
+    const rushingDefenders = [];
+    for (const defName in defPositions) {
+      const data = defData[defName];
+      if (data.mode === 'rush') {
+        rushingDefenders.push({ name: defName, pos: defPositions[defName] });
+      }
+    }
+
+    OL.forEach((olPos, i) => {
+      const olInfo = olData[i];
+      let targetDefender = null;
+
+      // 1. If currently engaged with an assigned target, try to maintain block
+      if (olInfo.isEngaged && olInfo.assignedTarget && defPositions[olInfo.assignedTarget]) {
+        targetDefender = defPositions[olInfo.assignedTarget];
+        const distToAssigned = Math.sqrt(Math.pow(targetDefender.x - olPos.x, 2) + Math.pow(targetDefender.y - olPos.y, 2));
+        // Check if assigned target is still rushing or is too far
+        if (distToAssigned > PLAYER_RADIUS * 2.5 || defData[olInfo.assignedTarget].mode !== 'rush') {
+          olInfo.isEngaged = false;
+          olInfo.assignedTarget = null;
+          targetDefender = null; // Clear target to find a new one
+        }
+      }
+
+      // 2. If not engaged, find a new rushing defender to block
+      if (!olInfo.isEngaged) {
+        let closestUnblockedRusher = null;
+        let minDist = Infinity;
+
+        rushingDefenders.forEach(rusher => {
+          // Check if this rusher is already assigned to another OL
+          const isBlockedByAnotherOL = olData.some((otherOl, otherIndex) =>
+            otherIndex !== i && otherOl.assignedTarget === rusher.name
+          );
+
+          if (!isBlockedByAnotherOL) {
+            const dx = rusher.pos.x - olPos.x;
+            const dy = rusher.pos.y - olPos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < minDist && dist < PLAYER_RADIUS * 10) { // Only consider rushers within a certain range
+              minDist = dist;
+              closestUnblockedRusher = rusher;
+            }
+          }
+        });
+
+        if (closestUnblockedRusher) {
+          olInfo.assignedTarget = closestUnblockedRusher.name;
+          olInfo.isEngaged = true;
+          targetDefender = closestUnblockedRusher.pos;
+        }
+      }
+
+      // 3. Perform blocking action
+      if (targetDefender && olInfo.isEngaged) {
+        const blockStrength = 0.5; // How much OL pushes defender
+        const blockDistance = PLAYER_RADIUS * 2; // Optimal distance to push defender away from OL
+
+        const dx = targetDefender.x - olPos.x;
+        const dy = targetDefender.y - olPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < blockDistance) {
+            // Defender is too close, push them away from the OL
+            const pushX = (targetDefender.x - olPos.x) * (1 - (dist / blockDistance));
+            const pushY = (targetDefender.y - olPos.y) * (1 - (dist / blockDistance));
+            targetDefender.x += pushX * blockStrength;
+            targetDefender.y += pushY * blockStrength;
+        } else if (dist > blockDistance * 1.5) { // If defender gets too far, move OL towards them slightly
+            olPos.x += (dx / dist) * (RUSH_DEF_SPEED * 0.7); // Move slower than rushers
+            olPos.y += (dy / dist) * (RUSH_DEF_SPEED * 0.7);
+        }
+
+        // Clamp OL position to field bounds
+        olPos.x = Math.min(Math.max(olPos.x, 0), FIELD_WIDTH);
+        olPos.y = Math.min(Math.max(olPos.y, 0), FIELD_HEIGHT);
+      }
+    });
+  }
+
+
+  // Tackle detection: if defender touches CURRENT ball carrier, play ends
+  if (ball.heldBy && !ball.isThrown && !playPaused) {
+    const carrierPos = positions[ball.heldBy];
+    for (const defName in defPositions) {
+      const defP = defPositions[defName];
+      const dx = defP.x - carrierPos.x;
+      const dy = defP.y - carrierPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < PLAYER_RADIUS * 1.5) { // Tackle radius reduced
+        showBanner('TACKLED!', 'silver');
+        // MODIFICATION: Tackle reset
+        resetPlay(carrierPos.y, true); // Reset to the tackled spot (ball carrier's Y position), carry over down
+        break;
+      }
+    }
+  }
+}
+
+// NEW: Function to update the HUD display
+function updateHUD() {
+    let teamDisplay = selectedTeam ? `Offense: ${selectedTeam}` : 'Offense: Choose Team';
+    let defTeamDisplay = defensiveTeam ? ` | Defense: ${defensiveTeam}` : '';
+    hud.textContent = `${teamDisplay}${defTeamDisplay} | Down: ${currentDown}`;
+}
+
+function update() {
+  if (snapAnim) {
+    snapAnim.progress++;
+    if (snapAnim.progress >= snapAnim.duration) {
+      snapAnim = null;
+      playPaused = false;
+      pausedOverlay.style.display = 'none';
+      if (playType === 'running') {
+        ball.heldBy = 'RB';
+      }
+    }
+  }
+
+  if (!playPaused && !snapAnim) {
+    updateControlled();
+    updateRouteRunner('WR1');
+    updateRouteRunner('WR2');
+    updateRouteRunner('WR3');
+    updateRouteRunner('RB');
+    updateBall();
+    updateDefense();
+  } else {
+    // Still update defense when paused to correctly position them relative to new scrimmage line
+    updateDefense();
+  }
+
+  if (!playPaused && !snapAnim && ball.heldBy) {
+    if (checkTouchdown()) {
+      showBanner('TOUCHDOWN!', 'gold'); // Use showBanner
+      playPaused = true;
+      pausedOverlay.style.display = 'flex';
+      gameStartMessage.style.display = 'block';
+      teamSelectionMenu.style.display = 'none';
+      // For a touchdown, reset for a new drive
+      resetPlay(OL_Y, false);
+    }
+  }
+
+  updateCamera();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawField();
+  drawRoutes();
+
+  // Draw OL - use a default grey for OL for now, or could use team secondary color
+  OL.forEach((olPos, i) => drawPlayer(olPos, 'OL' + (i + 1), '#555'));
+
+  // Draw Offense - these will now use the selectedTeam colors
+  drawPlayer(positions.QB, 'QB', 'blue'); // 'blue' is just a placeholder, drawPlayer will override
+  drawPlayer(positions.WR1, 'WR1', 'cyan');
+  drawPlayer(positions.WR2, 'WR2', 'cyan');
+  drawPlayer(positions.WR3, 'WR3', 'cyan');
+  drawPlayer(positions.RB, 'RB', 'cyan');
+
+  // Draw Defense - these colors are now dynamic based on defensiveTeam
+  if (window.defPositions) {
+    for (const defName in window.defPositions) {
+      // The `color` parameter here is just a fallback if `defensiveTeam` or `teamColors` is not set
+      drawPlayer(window.defPositions[defName], defName, 'red'); // Default fallback color
+    }
+  }
+
+  drawBall();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Initial setup: Show team selection menu first
+showTeamSelection();
+resetPlay(OL_Y, false); // Initialize game state, but keep paused until team selected
+loop();
+</script>
+</body>
+</html>

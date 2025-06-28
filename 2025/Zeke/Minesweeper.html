@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Minesweeper</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background-color: #f4f4f4;
+    }
+    #controls button {
+      margin: 5px;
+      padding: 10px 15px;
+    }
+    #grid {
+      display: inline-block;
+      margin-top: 20px;
+    }
+    .row {
+      display: flex;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      margin: 1px;
+      font-weight: bold;
+      text-align: center;
+      vertical-align: middle;
+      line-height: 30px;
+      background-color: #aaa;
+      cursor: pointer;
+      user-select: none;
+    }
+    .revealed {
+      background-color: #ddd;
+      cursor: default;
+    }
+    .flagged {
+      background-color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Minesweeper</h1>
+  <div id="controls">
+    <button onclick="startGame(5, 5)">Easy (5x5, 5 mines)</button>
+    <button onclick="startGame(8, 10)">Normal (8x8, 10 mines)</button>
+    <button onclick="startGame(20, 100)">Hard (20x20, 100 mines)</button>
+    <button onclick="startGame(currentSize, currentMines)">Restart</button>
+  </div>
+  <p id="status">Click to reveal, right-click to flag.</p>
+  <div id="grid"></div>
+
+  <script>
+    let board = [];
+    let revealed = [];
+    let flagged = [];
+    let gameOver = false;
+    let currentSize = 8;
+    let currentMines = 10;
+
+    function countAdjacentMines(row, col) {
+      const dirs = [-1, 0, 1];
+      let count = 0;
+      for (let dr of dirs) {
+        for (let dc of dirs) {
+          let r = row + dr, c = col + dc;
+          if (r >= 0 && r < currentSize && c >= 0 && c < currentSize && !(dr === 0 && dc === 0)) {
+            if (board[r][c] === "M") count++;
+          }
+        }
+      }
+      return count;
+    }
+
+    function createBoard(size, mines) {
+      board = Array.from({ length: size }, () => Array(size).fill(""));
+      revealed = Array.from({ length: size }, () => Array(size).fill(false));
+      flagged = Array.from({ length: size }, () => Array(size).fill(false));
+      gameOver = false;
+      let positions = Array.from({ length: size * size }, (_, i) => i);
+      positions.sort(() => 0.5 - Math.random());
+      for (let i = 0; i < mines; i++) {
+        const index = positions[i];
+        const row = Math.floor(index / size);
+        const col = index % size;
+        board[row][col] = "M";
+      }
+    }
+
+    function revealCell(row, col) {
+      if (gameOver || revealed[row][col] || flagged[row][col]) return;
+      revealed[row][col] = true;
+      const cell = document.getElementById(`cell-${row}-${col}`);
+      if (board[row][col] === "M") {
+        cell.textContent = "💣";
+        cell.classList.add("revealed");
+        document.getElementById("status").textContent = "💥 You hit a mine! Game over.";
+        revealEntireBoard();
+        gameOver = true;
+      } else {
+        const count = countAdjacentMines(row, col);
+        cell.textContent = count > 0 ? count : "";
+        cell.classList.add("revealed");
+        if (count === 0) {
+          const dirs = [-1, 0, 1];
+          for (let dr of dirs) {
+            for (let dc of dirs) {
+              if (dr === 0 && dc === 0) continue;
+              let r = row + dr, c = col + dc;
+              if (r >= 0 && r < currentSize && c >= 0 && c < currentSize) {
+                revealCell(r, c);
+              }
+            }
+          }
+        }
+        if (checkWin()) {
+          document.getElementById("status").textContent = "🎉 You win! All safe cells revealed.";
+          gameOver = true;
+        }
+      }
+    }
+
+    function revealEntireBoard() {
+      for (let i = 0; i < currentSize; i++) {
+        for (let j = 0; j < currentSize; j++) {
+          if (!revealed[i][j]) {
+            const cell = document.getElementById(`cell-${i}-${j}`);
+            if (board[i][j] === "M") {
+              cell.textContent = "💣";
+            } else {
+              const count = countAdjacentMines(i, j);
+              cell.textContent = count > 0 ? count : "";
+            }
+            cell.classList.add("revealed");
+          }
+        }
+      }
+    }
+
+    function checkWin() {
+      let safe = 0;
+      for (let i = 0; i < currentSize; i++) {
+        for (let j = 0; j < currentSize; j++) {
+          if (board[i][j] !== "M" && revealed[i][j]) safe++;
+        }
+      }
+      const totalSafe = currentSize * currentSize - currentMines;
+      return safe === totalSafe;
+    }
+
+    function toggleFlag(row, col, e) {
+      e.preventDefault();
+      if (gameOver || revealed[row][col]) return;
+      flagged[row][col] = !flagged[row][col];
+      const cell = document.getElementById(`cell-${row}-${col}`);
+      cell.textContent = flagged[row][col] ? "🚩" : "";
+    }
+
+    function renderBoard() {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      for (let i = 0; i < currentSize; i++) {
+        const rowDiv = document.createElement("div");
+        rowDiv.className = "row";
+        for (let j = 0; j < currentSize; j++) {
+          const cell = document.createElement("div");
+          cell.id = `cell-${i}-${j}`;
+          cell.className = "cell";
+          cell.onclick = () => revealCell(i, j);
+          cell.oncontextmenu = (e) => toggleFlag(i, j, e);
+          rowDiv.appendChild(cell);
+        }
+        grid.appendChild(rowDiv);
+      }
+    }
+
+    function startGame(size, mines) {
+      currentSize = size;
+      currentMines = mines;
+      createBoard(size, mines);
+      renderBoard();
+      document.getElementById("status").textContent = "Click to reveal, right-click to flag.";
+    }
+
+    // Start default game
+    startGame(currentSize, currentMines);
+  </script>
+
+</body>
+</html>

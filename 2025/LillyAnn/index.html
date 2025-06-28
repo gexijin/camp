@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dino Game - 1000 Levels</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      background: black;
+    }
+
+    .screen, .controls {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #111;
+      border: 2px solid white;
+      padding: 30px;
+      border-radius: 10px;
+      color: white;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .controls {
+      top: 10px;
+      left: auto;
+      right: 10px;
+      transform: none;
+      background: transparent;
+      border: none;
+      padding: 0;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      border: none;
+      background: white;
+      color: black;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    button:hover {
+      background: #ccc;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Start Screen -->
+  <div id="startScreen" class="screen">
+    <h1>Dino Game</h1>
+    <button onclick="showDifficultyMenu()">Start Game</button>
+  </div>
+
+  <!-- Difficulty Menu -->
+  <div id="difficultyMenu" class="screen hidden">
+    <h2>Select Difficulty</h2>
+    <button onclick="startGame('easy')">Easy</button>
+    <button onclick="startGame('medium')">Medium</button>
+    <button onclick="startGame('hard')">Hard</button>
+  </div>
+
+  <!-- Game Controls -->
+  <div class="controls hidden" id="gameControls">
+    <button onclick="restartGame()">Restart</button>
+    <button onclick="togglePause()" id="pauseBtn">Pause</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const startScreen = document.getElementById("startScreen");
+    const difficultyMenu = document.getElementById("difficultyMenu");
+    const gameControls = document.getElementById("gameControls");
+    const pauseBtn = document.getElementById("pauseBtn");
+
+    canvas.width = window.innerWidth;
+    canvas.height = 300;
+
+    const groundY = 250;
+    const totalLevels = 1000;
+
+    let dinosaur, cactusList, frame, score, level, isPaused;
+    let difficulty = 'medium';
+    let speedFactor = 0.3;
+    let spawnInterval = 100;
+    let nextCactusFrame = 0;
+
+    function showDifficultyMenu() {
+      startScreen.classList.add("hidden");
+      difficultyMenu.classList.remove("hidden");
+    }
+
+    function startGame(diff) {
+      difficulty = diff;
+      switch (difficulty) {
+        case 'easy': speedFactor = 0.2; spawnInterval = 120; break;
+        case 'medium': speedFactor = 0.3; spawnInterval = 100; break;
+        case 'hard': speedFactor = 0.6; spawnInterval = 80; break;
+      }
+
+      difficultyMenu.classList.add("hidden");
+      gameControls.classList.remove("hidden");
+      initGame();
+      gameLoop();
+    }
+
+    function initGame() {
+      dinosaur = {
+        x: 50,
+        y: groundY - 50,
+        width: 50,
+        height: 50,
+        vy: 0,
+        gravity: 2,
+        jumpPower: -25,
+        isJumping: false,
+        color: "hotpink"
+      };
+
+      cactusList = [];
+      frame = 0;
+      score = 0;
+      level = 1;
+      isPaused = false;
+      nextCactusFrame = 0;
+    }
+
+    function createCactus() {
+      const size = Math.random() * 20 + 30;
+      cactusList.push({
+        x: canvas.width,
+        y: groundY - size,
+        width: 20,
+        height: size,
+        color: "turquoise"
+      });
+    }
+
+    function updateDino() {
+      dinosaur.vy += dinosaur.gravity;
+      dinosaur.y += dinosaur.vy;
+
+      if (dinosaur.y >= groundY - dinosaur.height) {
+        dinosaur.y = groundY - dinosaur.height;
+        dinosaur.isJumping = false;
+      }
+    }
+
+    function updateCacti() {
+      const speed = 5 + level * speedFactor;
+      for (let i = 0; i < cactusList.length; i++) {
+        cactusList[i].x -= speed;
+      }
+      cactusList = cactusList.filter(c => c.x + c.width > 0);
+    }
+
+    function checkCollision() {
+      for (let c of cactusList) {
+        if (
+          dinosaur.x < c.x + c.width &&
+          dinosaur.x + dinosaur.width > c.x &&
+          dinosaur.y < c.y + c.height &&
+          dinosaur.y + dinosaur.height > c.y
+        ) {
+          alert("Game Over! Final Score: " + score);
+          restartGame();
+        }
+      }
+    }
+
+    function drawGround() {
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, groundY, canvas.width, 3);
+    }
+
+    function drawDino() {
+      ctx.fillStyle = dinosaur.color;
+      ctx.fillRect(dinosaur.x, dinosaur.y, dinosaur.width, dinosaur.height);
+    }
+
+    function drawCacti() {
+      for (let c of cactusList) {
+        ctx.fillStyle = c.color;
+        ctx.fillRect(c.x, c.y, c.width, c.height);
+      }
+    }
+
+    function drawScoreLevel() {
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Score: " + score, 20, 30);
+      ctx.fillText("Level: " + level + " / " + totalLevels, 20, 60);
+      ctx.fillText("Difficulty: " + difficulty.toUpperCase(), 20, 90);
+    }
+
+    function gameLoop() {
+      if (isPaused) {
+        requestAnimationFrame(gameLoop);
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGround();
+      drawDino();
+      drawCacti();
+      drawScoreLevel();
+
+      updateDino();
+      updateCacti();
+      checkCollision();
+
+      frame++;
+      score++;
+
+      if (score % 100 === 0 && level < totalLevels) {
+        level++;
+      }
+
+      // Randomized cactus spacing
+      if (frame >= nextCactusFrame) {
+        createCactus();
+        const base = Math.max(spawnInterval - level * 0.7, 8);
+        const randomness = Math.random() * base * 1.0;
+        nextCactusFrame = frame + Math.floor(base + randomness);
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if ((e.code === "Space" || e.code === "ArrowUp") && !dinosaur.isJumping) {
+        dinosaur.vy = dinosaur.jumpPower;
+        dinosaur.isJumping = true;
+      }
+    });
+
+    function restartGame() {
+      initGame();
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? "Resume" : "Pause";
+    }
+  </script>
+</body>
+</html>
